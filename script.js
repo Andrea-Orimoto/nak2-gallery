@@ -100,22 +100,23 @@ function showModal(item) {
 
   if (item.type === 'video') {
     mediaHTML = `
-      <video id="modalVideo" 
-             src="${item.fullUrl}" 
-             controls 
-             autoplay 
-             playsinline 
-             class="max-h-full max-w-full rounded-2xl">
-      </video>`;
+      <div class="flex items-center justify-center w-full h-full p-4">
+        <video id="modalVideo" 
+               src="${item.fullUrl}" 
+               controls 
+               autoplay 
+               playsinline 
+               class="max-h-[85vh] max-w-[90vw] rounded-2xl">
+        </video>
+      </div>`;
   } else {
-    // This is the key fix for portrait/landscape images - full fit without cropping
     mediaHTML = `
-      <img id="modalImage" 
-           src="${item.fullUrl}" 
-           class="max-h-full max-w-full object-contain rounded-2xl" 
-           alt="${item.caption || ''}"
-           style="height: auto; width: auto; max-height: 100%; max-width: 100%;">
-    `;
+      <div class="flex items-center justify-center w-full h-full p-4">
+        <img id="modalImage" 
+             src="${item.fullUrl}" 
+             class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" 
+             alt="${item.caption || ''}">
+      </div>`;
   }
 
   content.innerHTML = mediaHTML;
@@ -123,19 +124,27 @@ function showModal(item) {
   meta.innerHTML = `
     <div class="flex justify-between items-start gap-4">
       <div class="flex-1">
-        <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { 
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+        })}</p>
         <p class="mt-1 text-lg leading-tight">${item.caption || '<span class="text-zinc-500 italic">No caption</span>'}</p>
       </div>
-      <button id="closeBtn" class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-3 -mt-1">×</button>
+      <button id="closeBtn" 
+              class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-3 -mt-1">×</button>
     </div>
 
     <div class="mt-4 flex flex-wrap gap-2">
       ${item.tags && item.tags.length 
-        ? item.tags.map(tag => `<span onclick="filterByTag('${tag}')" class="tag px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors">#${tag}</span>`).join('')
+        ? item.tags.map(tag => `
+          <span onclick="filterByTag('${tag}')" 
+                class="tag px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors">
+            #${tag}
+          </span>`).join('')
         : '<span class="text-zinc-500 text-sm">No tags yet • Add them in index.json</span>'}
     </div>
 
-    <a href="${item.fullUrl}" download class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
+    <a href="${item.fullUrl}" download 
+       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
       ⬇️ Download Original ${item.type === 'video' ? 'Video' : 'Photo'}
     </a>
   `;
@@ -147,29 +156,39 @@ function showModal(item) {
     currentVideo = document.getElementById('modalVideo');
   }
 
+  // Add ESC key listener
+  document.addEventListener('keydown', handleEscKey);
+
   setTimeout(() => {
     const closeBtn = document.getElementById('closeBtn');
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
   }, 10);
 }
 
+function handleEscKey(e) {
+  if (e.key === "Escape") {
+    closeModal();
+  }
+}
+
 function closeModal() {
   const modal = document.getElementById('modal');
 
+  // Stop video if playing
   if (currentVideo) {
     currentVideo.pause();
     currentVideo.currentTime = 0;
     currentVideo = null;
   }
 
+  // Remove ESC listener
+  document.removeEventListener('keydown', handleEscKey);
+
   modal.classList.add('hidden');
   modal.classList.remove('flex');
 }
 
-// Rest of the functions (toggleGroup, renderTagCloud, etc.) remain the same
-// ... (keep your existing toggleGroup, renderTagCloud, filterByTag, clearFilters, window.onload)
-
-window.toggleGroup = function(header) {
+function toggleGroup(header) {
   const content = header.nextElementSibling;
   const chevron = header.querySelector('.chevron');
 
@@ -180,7 +199,7 @@ window.toggleGroup = function(header) {
     content.style.display = 'none';
     chevron.style.transform = 'rotate(0deg)';
   }
-};
+}
 
 function renderTagCloud() {
   const allTags = new Set();
@@ -189,7 +208,9 @@ function renderTagCloud() {
   const cloud = document.getElementById('tagCloud');
   cloud.innerHTML = Array.from(allTags).map(tag => `
     <span onclick="filterByTag('${tag}')" 
-          class="tag px-4 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-all">#${tag}</span>
+          class="tag px-4 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-all">
+      #${tag}
+    </span>
   `).join('');
 }
 
