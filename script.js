@@ -52,13 +52,9 @@ function renderGroupedGallery(items) {
   const gallery = document.getElementById('gallery');
   gallery.innerHTML = '';
 
-  // Apply filter
   let filteredItems = items;
-  if (currentFilter === 'image') {
-    filteredItems = items.filter(item => item.type === 'image');
-  } else if (currentFilter === 'video') {
-    filteredItems = items.filter(item => item.type === 'video');
-  }
+  if (currentFilter === 'image') filteredItems = items.filter(item => item.type === 'image');
+  else if (currentFilter === 'video') filteredItems = items.filter(item => item.type === 'video');
 
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
@@ -98,24 +94,35 @@ function renderGroupedGallery(items) {
       const div = document.createElement('div');
       div.className = `media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
 
-      const iconHTML = item.type === 'video' 
-        ? `<div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
-             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-               <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor"/>
-               <polygon points="10,9 10,15 15,12" fill="currentColor"/>
-             </svg>
-           </div>`
-        : `<div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
-             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-               <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-             </svg>
-           </div>`;
+      if (item.type === 'video') {
+        // Use the generated thumbnail from ./thumbnails/
+        const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
 
-      const mediaHTML = item.type === 'video' 
-        ? `<video src="${item.thumbUrl}" muted loop playsinline class="w-full h-full object-cover"></video>`
-        : `<img src="${item.thumbUrl}" loading="lazy" class="w-full h-full object-cover" alt="${item.caption || ''}">`;
+        div.innerHTML = `
+          <img src="${thumbSrc}" 
+               loading="lazy" 
+               class="w-full h-full object-cover" 
+               alt="Video"
+               onerror="this.src='https://via.placeholder.com/640x360/374151/9CA3AF?text=Video'; this.onerror=null;">
+          <div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor"/>
+              <polygon points="10,9 10,15 15,12" fill="currentColor"/>
+            </svg>
+          </div>`;
+      } else {
+        div.innerHTML = `
+          <img src="${item.thumbUrl}" 
+               loading="lazy" 
+               class="w-full h-full object-cover" 
+               alt="${item.caption || ''}">
+          <div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>`;
+      }
 
-      div.innerHTML = `${mediaHTML}${iconHTML}`;
       div.addEventListener('click', () => showModal(item));
       contentDiv.appendChild(div);
     });
@@ -124,7 +131,6 @@ function renderGroupedGallery(items) {
     section.appendChild(contentDiv);
     gallery.appendChild(section);
 
-    // Start expanded
     contentDiv.style.display = 'grid';
     header.querySelector('.chevron').style.transform = 'rotate(90deg)';
   });
@@ -148,28 +154,9 @@ function showModal(item) {
   const content = document.getElementById('modalContent');
   const meta = document.getElementById('modalMeta');
 
-  let mediaHTML = '';
-
-  if (item.type === 'video') {
-    mediaHTML = `
-      <div class="flex items-center justify-center w-full h-full p-4">
-        <video id="modalVideo" 
-               src="${item.fullUrl}" 
-               controls 
-               autoplay 
-               playsinline 
-               class="max-h-[85vh] max-w-[90vw] rounded-2xl">
-        </video>
-      </div>`;
-  } else {
-    mediaHTML = `
-      <div class="flex items-center justify-center w-full h-full p-4">
-        <img id="modalImage" 
-             src="${item.fullUrl}" 
-             class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" 
-             alt="${item.caption || ''}">
-      </div>`;
-  }
+  let mediaHTML = item.type === 'video' 
+    ? `<div class="flex items-center justify-center w-full h-full p-4"><video id="modalVideo" src="${item.fullUrl}" controls autoplay playsinline class="max-h-[85vh] max-w-[90vw] rounded-2xl"></video></div>`
+    : `<div class="flex items-center justify-center w-full h-full p-4"><img id="modalImage" src="${item.fullUrl}" class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" alt=""></div>`;
 
   content.innerHTML = mediaHTML;
 
@@ -190,9 +177,7 @@ function showModal(item) {
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 
-  if (item.type === 'video') {
-    currentVideo = document.getElementById('modalVideo');
-  }
+  if (item.type === 'video') currentVideo = document.getElementById('modalVideo');
 
   document.addEventListener('keydown', handleEscKey);
 

@@ -2,14 +2,16 @@ name: Update iCloud Album Index
 
 on:
   schedule:
-    - cron: '0 4 * * *'     # Daily at 04:00 UTC
-  workflow_dispatch:        # Allow manual run
+    - cron: '0 4 * * *'      # Daily at 04:00 UTC
+  workflow_dispatch:         # Allow manual trigger
 
 jobs:
   update:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -20,10 +22,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Update index from iCloud
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Update index from iCloud (with thumbnail generation)
         run: npm run update
 
-      - name: Commit changes if any
+      - name: Commit changes (including new thumbnails)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update iCloud album index"
+          commit_message: "chore: update iCloud album index and thumbnails"
+          file_pattern: |
+            index.json
+            thumbnails/*.jpg
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
