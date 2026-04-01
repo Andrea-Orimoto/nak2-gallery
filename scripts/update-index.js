@@ -2,7 +2,7 @@ import { getImages } from 'icloud-shared-album';
 import fs from 'fs/promises';
 
 const TOKEN = 'B1uG6XBubuvcunC';
-const INDEX_PATH = './public/index.json';   // Make sure this matches your folder structure
+const INDEX_PATH = './index.json';   // Make sure this matches your folder structure
 
 async function main() {
   console.log('Fetching iCloud shared album...');

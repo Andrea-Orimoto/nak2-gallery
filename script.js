@@ -1,26 +1,69 @@
 let allMedia = {};
+let currentFilter = 'all';
 let currentVideo = null;
 
-async function loadIndex() {
+async function loadData() {
   try {
-    const res = await fetch('index.json?t=' + Date.now());
-    allMedia = await res.json();
-    console.log(`✅ Loaded ${Object.keys(allMedia).length} media items (${Object.values(allMedia).filter(i => i.type === 'video').length} videos)`);
+    const [mediaRes, tagsRes] = await Promise.all([
+      fetch('index.json?t=' + Date.now()),
+      fetch('tags.json?t=' + Date.now()).catch(() => ({ json: () => ({}) }))
+    ]);
+
+    allMedia = await mediaRes.json();
+    const tagsData = await tagsRes.json().catch(() => ({}));
+
+    Object.keys(allMedia).forEach(id => {
+      allMedia[id].tags = tagsData[id] || [];
+    });
+
+    console.log(`✅ Loaded ${Object.keys(allMedia).length} media items`);
     renderGroupedGallery(Object.values(allMedia));
     renderTagCloud();
+    setupFilterButtons();        // ← Important: attach listeners here
   } catch (err) {
-    console.error('Failed to load index.json', err);
+    console.error('Failed to load data', err);
   }
+}
+
+function setupFilterButtons() {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setFilter(btn.dataset.filter);
+    });
+  });
+}
+
+function setFilter(filter) {
+  currentFilter = filter;
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    if (btn.dataset.filter === filter) {
+      btn.classList.add('bg-blue-600', 'text-white');
+      btn.classList.remove('bg-zinc-800', 'text-zinc-300');
+    } else {
+      btn.classList.remove('bg-blue-600', 'text-white');
+      btn.classList.add('bg-zinc-800', 'text-zinc-300');
+    }
+  });
+
+  renderGroupedGallery(Object.values(allMedia));
 }
 
 function renderGroupedGallery(items) {
   const gallery = document.getElementById('gallery');
   gallery.innerHTML = '';
 
-  items.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
+  let filteredItems = items;
+  if (currentFilter === 'image') {
+    filteredItems = items.filter(item => item.type === 'image');
+  } else if (currentFilter === 'video') {
+    filteredItems = items.filter(item => item.type === 'video');
+  }
+
+  filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
   const groups = {};
-  items.forEach(item => {
+  filteredItems.forEach(item => {
     const dateKey = new Date(item.dateTaken).toISOString().split('T')[0];
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(item);
@@ -31,10 +74,7 @@ function renderGroupedGallery(items) {
   sortedDates.forEach(dateKey => {
     const groupItems = groups[dateKey];
     const displayDate = new Date(dateKey).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
 
     const section = document.createElement('div');
@@ -50,8 +90,7 @@ function renderGroupedGallery(items) {
         <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
       </div>
       
-      <div class="group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5">
-      </div>
+      <div class="group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5"></div>
     `;
 
     const contentDiv = section.querySelector('.group-content');
@@ -91,6 +130,9 @@ function renderGroupedGallery(items) {
   });
 }
 
+// Keep the rest of your functions (showModal, closeModal, toggleGroup, etc.)
+// ... I'll include them fully for completeness
+
 function showModal(item) {
   const modal = document.getElementById('modal');
   const content = document.getElementById('modalContent');
@@ -101,43 +143,27 @@ function showModal(item) {
   if (item.type === 'video') {
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4">
-        <video id="modalVideo" 
-               src="${item.fullUrl}" 
-               controls 
-               autoplay 
-               playsinline 
-               class="max-h-[85vh] max-w-[90vw] rounded-2xl">
-        </video>
+        <video id="modalVideo" src="${item.fullUrl}" controls autoplay playsinline class="max-h-[85vh] max-w-[90vw] rounded-2xl"></video>
       </div>`;
   } else {
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4">
-        <img id="modalImage" 
-             src="${item.fullUrl}" 
-             class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" 
-             alt="${item.caption || ''}">
+        <img id="modalImage" src="${item.fullUrl}" class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" alt="">
       </div>`;
   }
 
   content.innerHTML = mediaHTML;
 
-  // Simplified metadata - only date and download button (no caption, no tags)
   meta.innerHTML = `
     <div class="flex justify-between items-center">
-      <p class="text-zinc-400 text-sm">
-        ${new Date(item.dateTaken).toLocaleDateString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        })}
-      </p>
-      <button id="closeBtn" 
-              class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-4">×</button>
+      <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      })}</p>
+      <button id="closeBtn" class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-4">×</button>
     </div>
 
     <a href="${item.fullUrl}" download 
-       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all w-fit">
+       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
       ⬇️ Download Original ${item.type === 'video' ? 'Video' : 'Photo'}
     </a>
   `;
@@ -145,11 +171,8 @@ function showModal(item) {
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 
-  if (item.type === 'video') {
-    currentVideo = document.getElementById('modalVideo');
-  }
+  if (item.type === 'video') currentVideo = document.getElementById('modalVideo');
 
-  // ESC key support
   document.addEventListener('keydown', handleEscKey);
 
   setTimeout(() => {
@@ -159,9 +182,7 @@ function showModal(item) {
 }
 
 function handleEscKey(e) {
-  if (e.key === "Escape") {
-    closeModal();
-  }
+  if (e.key === "Escape") closeModal();
 }
 
 function closeModal() {
@@ -174,7 +195,6 @@ function closeModal() {
   }
 
   document.removeEventListener('keydown', handleEscKey);
-
   modal.classList.add('hidden');
   modal.classList.remove('flex');
 }
@@ -209,29 +229,4 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-function clearFilters() {
-  document.getElementById('search').value = '';
-  document.getElementById('dateFrom').value = '';
-  document.getElementById('dateTo').value = '';
-  document.getElementById('filterImages').checked = true;
-  document.getElementById('filterVideos').checked = true;
-  renderGroupedGallery(Object.values(allMedia));
-}
-
-window.onload = () => {
-  loadIndex();
-
-  const searchInput = document.getElementById('search');
-  searchInput.addEventListener('input', () => {
-    const term = searchInput.value.toLowerCase().trim();
-    if (!term) {
-      renderGroupedGallery(Object.values(allMedia));
-      return;
-    }
-    const filtered = Object.values(allMedia).filter(item => 
-      (item.caption || '').toLowerCase().includes(term) ||
-      (item.tags || []).some(t => t.toLowerCase().includes(term))
-    );
-    renderGroupedGallery(filtered);
-  });
-};
+window.onload = loadData;
