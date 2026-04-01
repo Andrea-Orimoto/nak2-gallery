@@ -1,0 +1,29 @@
+name: Update iCloud Album Index
+
+on:
+  schedule:
+    - cron: '0 4 * * *'     # Daily at 04:00 UTC
+  workflow_dispatch:        # Allow manual run
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update index from iCloud
+        run: npm run update
+
+      - name: Commit changes if any
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update iCloud album index"

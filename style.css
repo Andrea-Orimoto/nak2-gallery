@@ -1,0 +1,29 @@
+#modal {
+  background: rgba(0, 0, 0, 0.95);
+}
+
+#modalContent {
+  padding: 1.5rem 1.5rem 0;
+}
+
+.media-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  aspect-ratio: 1 / 1;
+  background: #18181b;
+}
+
+.group-content {
+  display: grid;
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+/* Optional: nicer hover on headers */
+.group-header:hover {
+  border-color: rgb(59 130 246);
+}

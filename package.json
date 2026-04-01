@@ -1,0 +1,13 @@
+{
+  "name": "icloud-album-gallery",
+  "version": "1.0.0",
+  "description": "Static gallery for iCloud shared album with filtering, tags, and search",
+  "type": "module",
+  "scripts": {
+    "update": "node scripts/update-index.js",
+    "dev": "echo 'Open public/index.html directly in browser'"
+  },
+  "dependencies": {
+    "icloud-shared-album": "^1.2.0"
+  }
+}

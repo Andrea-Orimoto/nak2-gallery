@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nak2 Album Gallery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="script.js"></script>
+</head>
+
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <h1 class="text-4xl font-bold mb-8 text-center">Nak2 Album</h1>
+
+    <!-- Controls 
+    <div class="flex flex-wrap gap-4 mb-8 bg-zinc-900 p-4 rounded-xl">
+      <input id="search" type="text" placeholder="Search captions or tags..."
+        class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500">
+
+      <div class="flex gap-2">
+        <input id="dateFrom" type="date" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+        <span class="self-center">to</span>
+        <input id="dateTo" type="date" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+      </div>
+
+      <div class="flex gap-4">
+        <label><input type="checkbox" id="filterImages" checked> Images</label>
+        <label><input type="checkbox" id="filterVideos" checked> Videos</label>
+      </div>
+
+      <button onclick="clearFilters()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg">Clear</button>
+    </div>
+  -->
+
+    <!-- Tags cloud -->
+    <div id="tagCloud" class="flex flex-wrap gap-2 mb-8"></div>
+
+    <!-- Gallery grid -->
+    <div id="gallery" class="grid grid-cols-1 gap-0"> <!-- Changed from previous grid classes -->
+    </div>
+  </div>
+
+  <!-- Lightbox modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
+    <div class="w-full max-w-[95vw] max-h-[95vh] bg-zinc-900 rounded-3xl overflow-hidden flex flex-col">
+      <!-- Media area -->
+      <div id="modalContent" class="flex-1 flex items-center justify-center bg-black p-4 overflow-hidden">
+        <!-- Image or video inserted here -->
+      </div>
+
+      <!-- Metadata bar -->
+      <div id="modalMeta" class="bg-zinc-900 border-t border-zinc-800 p-6"></div>
+    </div>
+  </div>
+
+</body>
+
+</html>
