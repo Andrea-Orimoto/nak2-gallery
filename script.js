@@ -121,30 +121,23 @@ function showModal(item) {
 
   content.innerHTML = mediaHTML;
 
+  // Simplified metadata - only date and download button (no caption, no tags)
   meta.innerHTML = `
-    <div class="flex justify-between items-start gap-4">
-      <div class="flex-1">
-        <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { 
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-        })}</p>
-        <p class="mt-1 text-lg leading-tight">${item.caption || '<span class="text-zinc-500 italic">No caption</span>'}</p>
-      </div>
+    <div class="flex justify-between items-center">
+      <p class="text-zinc-400 text-sm">
+        ${new Date(item.dateTaken).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })}
+      </p>
       <button id="closeBtn" 
-              class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-3 -mt-1">×</button>
-    </div>
-
-    <div class="mt-4 flex flex-wrap gap-2">
-      ${item.tags && item.tags.length 
-        ? item.tags.map(tag => `
-          <span onclick="filterByTag('${tag}')" 
-                class="tag px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors">
-            #${tag}
-          </span>`).join('')
-        : '<span class="text-zinc-500 text-sm">No tags yet • Add them in index.json</span>'}
+              class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-4">×</button>
     </div>
 
     <a href="${item.fullUrl}" download 
-       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
+       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all w-fit">
       ⬇️ Download Original ${item.type === 'video' ? 'Video' : 'Photo'}
     </a>
   `;
@@ -156,7 +149,7 @@ function showModal(item) {
     currentVideo = document.getElementById('modalVideo');
   }
 
-  // Add ESC key listener
+  // ESC key support
   document.addEventListener('keydown', handleEscKey);
 
   setTimeout(() => {
@@ -174,14 +167,12 @@ function handleEscKey(e) {
 function closeModal() {
   const modal = document.getElementById('modal');
 
-  // Stop video if playing
   if (currentVideo) {
     currentVideo.pause();
     currentVideo.currentTime = 0;
     currentVideo = null;
   }
 
-  // Remove ESC listener
   document.removeEventListener('keydown', handleEscKey);
 
   modal.classList.add('hidden');
