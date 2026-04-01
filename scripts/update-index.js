@@ -2,7 +2,7 @@ import { getImages } from 'icloud-shared-album';
 import fs from 'fs/promises';
 
 const TOKEN = 'B1uG6XBubuvcunC';
-const INDEX_PATH = './index.json';   // Make sure this matches your folder structure
+const INDEX_PATH = './index.json';
 
 async function main() {
   console.log('Fetching iCloud shared album...');
@@ -16,23 +16,15 @@ async function main() {
   for (const item of data.photos || []) {
     const id = item.photoGuid || item.checksum || item.id || Math.random().toString(36).slice(2);
 
-    // Improved video detection
+    // Final robust video detection for your album
     const derivatives = item.derivatives || {};
     const derivValues = Object.values(derivatives);
 
     const isVideo = 
-      derivValues.some(d => 
-        d.url && (
-          d.url.endsWith('.mp4') || 
-          d.url.endsWith('.mov') || 
-          d.url.includes('video') || 
-          d.url.includes('720p') || 
-          d.url.includes('1080p')
-        )
-      ) ||
-      item.mediaType === 'video' ||
-      item.assetType === 'video' ||
-      (item.caption && item.caption.toLowerCase().includes('video'));
+      item.mediaAssetType === 'video' ||                    // ← This was the missing key!
+      derivValues.some(d => d.url && d.url.endsWith('.mp4')) ||
+      derivValues.some(d => d.url && d.url.endsWith('.mov')) ||
+      derivValues.some(d => d.url && d.url.includes('video'));
 
     const type = isVideo ? 'video' : 'image';
 

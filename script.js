@@ -12,6 +12,7 @@ async function loadData() {
     allMedia = await mediaRes.json();
     const tagsData = await tagsRes.json().catch(() => ({}));
 
+    // Merge tags
     Object.keys(allMedia).forEach(id => {
       allMedia[id].tags = tagsData[id] || [];
     });
@@ -27,9 +28,7 @@ async function loadData() {
 
 function setupFilterButtons() {
   document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      setFilter(btn.dataset.filter);
-    });
+    btn.addEventListener('click', () => setFilter(btn.dataset.filter));
   });
 }
 
@@ -53,9 +52,13 @@ function renderGroupedGallery(items) {
   const gallery = document.getElementById('gallery');
   gallery.innerHTML = '';
 
+  // Apply filter
   let filteredItems = items;
-  if (currentFilter === 'image') filteredItems = items.filter(item => item.type === 'image');
-  else if (currentFilter === 'video') filteredItems = items.filter(item => item.type === 'video');
+  if (currentFilter === 'image') {
+    filteredItems = items.filter(item => item.type === 'image');
+  } else if (currentFilter === 'video') {
+    filteredItems = items.filter(item => item.type === 'video');
+  }
 
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
@@ -77,7 +80,6 @@ function renderGroupedGallery(items) {
     const section = document.createElement('div');
     section.className = 'mb-12';
 
-    // Create header with proper event listener (no inline onclick)
     const header = document.createElement('div');
     header.className = `group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800`;
     header.innerHTML = `
@@ -87,7 +89,6 @@ function renderGroupedGallery(items) {
       </div>
       <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
     `;
-
     header.addEventListener('click', () => toggleGroup(header));
 
     const contentDiv = document.createElement('div');
@@ -142,7 +143,6 @@ function toggleGroup(header) {
   }
 }
 
-// Rest of the functions (showModal, closeModal, etc.)
 function showModal(item) {
   const modal = document.getElementById('modal');
   const content = document.getElementById('modalContent');
@@ -153,12 +153,21 @@ function showModal(item) {
   if (item.type === 'video') {
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4">
-        <video id="modalVideo" src="${item.fullUrl}" controls autoplay playsinline class="max-h-[85vh] max-w-[90vw] rounded-2xl"></video>
+        <video id="modalVideo" 
+               src="${item.fullUrl}" 
+               controls 
+               autoplay 
+               playsinline 
+               class="max-h-[85vh] max-w-[90vw] rounded-2xl">
+        </video>
       </div>`;
   } else {
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4">
-        <img id="modalImage" src="${item.fullUrl}" class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" alt="">
+        <img id="modalImage" 
+             src="${item.fullUrl}" 
+             class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" 
+             alt="${item.caption || ''}">
       </div>`;
   }
 
@@ -181,7 +190,9 @@ function showModal(item) {
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 
-  if (item.type === 'video') currentVideo = document.getElementById('modalVideo');
+  if (item.type === 'video') {
+    currentVideo = document.getElementById('modalVideo');
+  }
 
   document.addEventListener('keydown', handleEscKey);
 
@@ -224,15 +235,6 @@ function renderTagCloud() {
 
 function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
-}
-
-function clearFilters() {
-  currentFilter = 'all';
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.classList.remove('bg-blue-600', 'text-white');
-    btn.classList.add('bg-zinc-800', 'text-zinc-300');
-  });
-  renderGroupedGallery(Object.values(allMedia));
 }
 
 window.onload = loadData;
