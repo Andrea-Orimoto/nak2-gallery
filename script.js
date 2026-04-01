@@ -19,7 +19,7 @@ async function loadData() {
     console.log(`✅ Loaded ${Object.keys(allMedia).length} media items`);
     renderGroupedGallery(Object.values(allMedia));
     renderTagCloud();
-    setupFilterButtons();        // ← Important: attach listeners here
+    setupFilterButtons();
   } catch (err) {
     console.error('Failed to load data', err);
   }
@@ -54,11 +54,8 @@ function renderGroupedGallery(items) {
   gallery.innerHTML = '';
 
   let filteredItems = items;
-  if (currentFilter === 'image') {
-    filteredItems = items.filter(item => item.type === 'image');
-  } else if (currentFilter === 'video') {
-    filteredItems = items.filter(item => item.type === 'video');
-  }
+  if (currentFilter === 'image') filteredItems = items.filter(item => item.type === 'image');
+  else if (currentFilter === 'video') filteredItems = items.filter(item => item.type === 'video');
 
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
@@ -80,21 +77,21 @@ function renderGroupedGallery(items) {
     const section = document.createElement('div');
     section.className = 'mb-12';
 
-    section.innerHTML = `
-      <div onclick="toggleGroup(this)" 
-           class="group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800">
-        <div>
-          <h2 class="text-2xl font-semibold text-white">${displayDate}</h2>
-          <p class="text-zinc-500 text-sm mt-0.5">${groupItems.length} items</p>
-        </div>
-        <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
+    // Create header with proper event listener (no inline onclick)
+    const header = document.createElement('div');
+    header.className = `group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800`;
+    header.innerHTML = `
+      <div>
+        <h2 class="text-2xl font-semibold text-white">${displayDate}</h2>
+        <p class="text-zinc-500 text-sm mt-0.5">${groupItems.length} items</p>
       </div>
-      
-      <div class="group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5"></div>
+      <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
     `;
 
-    const contentDiv = section.querySelector('.group-content');
-    const chevron = section.querySelector('.chevron');
+    header.addEventListener('click', () => toggleGroup(header));
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5';
 
     groupItems.forEach(item => {
       const div = document.createElement('div');
@@ -118,21 +115,34 @@ function renderGroupedGallery(items) {
         : `<img src="${item.thumbUrl}" loading="lazy" class="w-full h-full object-cover" alt="${item.caption || ''}">`;
 
       div.innerHTML = `${mediaHTML}${iconHTML}`;
-
       div.addEventListener('click', () => showModal(item));
       contentDiv.appendChild(div);
     });
 
+    section.appendChild(header);
+    section.appendChild(contentDiv);
     gallery.appendChild(section);
 
+    // Start expanded
     contentDiv.style.display = 'grid';
-    chevron.style.transform = 'rotate(90deg)';
+    header.querySelector('.chevron').style.transform = 'rotate(90deg)';
   });
 }
 
-// Keep the rest of your functions (showModal, closeModal, toggleGroup, etc.)
-// ... I'll include them fully for completeness
+function toggleGroup(header) {
+  const content = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
 
+  if (content.style.display === 'none' || content.style.display === '') {
+    content.style.display = 'grid';
+    chevron.style.transform = 'rotate(90deg)';
+  } else {
+    content.style.display = 'none';
+    chevron.style.transform = 'rotate(0deg)';
+  }
+}
+
+// Rest of the functions (showModal, closeModal, etc.)
 function showModal(item) {
   const modal = document.getElementById('modal');
   const content = document.getElementById('modalContent');
@@ -199,19 +209,6 @@ function closeModal() {
   modal.classList.remove('flex');
 }
 
-function toggleGroup(header) {
-  const content = header.nextElementSibling;
-  const chevron = header.querySelector('.chevron');
-
-  if (content.style.display === 'none') {
-    content.style.display = 'grid';
-    chevron.style.transform = 'rotate(90deg)';
-  } else {
-    content.style.display = 'none';
-    chevron.style.transform = 'rotate(0deg)';
-  }
-}
-
 function renderTagCloud() {
   const allTags = new Set();
   Object.values(allMedia).forEach(item => (item.tags || []).forEach(t => allTags.add(t)));
@@ -227,6 +224,15 @@ function renderTagCloud() {
 
 function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
+}
+
+function clearFilters() {
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('bg-blue-600', 'text-white');
+    btn.classList.add('bg-zinc-800', 'text-zinc-300');
+  });
+  renderGroupedGallery(Object.values(allMedia));
 }
 
 window.onload = loadData;
