@@ -182,7 +182,6 @@ function showModal(item) {
 
   content.innerHTML = mediaHTML;
 
-  // Smart button logic: Download on desktop, Save to Photos on mobile
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   let buttonsHTML = '';
@@ -264,28 +263,47 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Save to Photos function (for mobile)
+// Improved Save to Photos function
 window.saveToPhotos = async function(url, type) {
+  const isVideo = type === 'video';
+  const actionName = isVideo ? 'Video' : 'Image';
+
   try {
     const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch');
+
     const blob = await response.blob();
-    
-    const fileName = type === 'video' ? 'video.mp4' : 'photo.jpg';
+    const fileName = isVideo ? 'video.mp4' : 'photo.jpg';
     const file = new File([blob], fileName, { 
-      type: blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')
+      type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg')
     });
 
+    // Try native share first (works best for videos)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         files: [file],
-        title: type === 'video' ? 'Save Video' : 'Save Photo'
+        title: `Save ${actionName}`
       });
+      return;
+    }
+
+    // Fallback for images or when share fails
+    if (!isVideo) {
+      // For images, create a temporary link and encourage long-press
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      alert("Image downloaded. To save to Photos:\n1. Open the Files app\n2. Go to Downloads\n3. Long-press the image and tap 'Save to Photos'");
     } else {
-      alert(`Long-press the ${type} and choose "Save ${type === 'video' ? 'Video' : 'Image'}".`);
+      alert(`Couldn't open share sheet.\n\nTip: Long-press the playing video and select "Save Video".`);
     }
   } catch (err) {
     console.error(err);
-    alert(`Couldn't open share sheet.\n\nTip: Long-press the ${type} in the player and select "Save".`);
+    alert(`Failed to prepare ${actionName.toLowerCase()}.\n\nTry long-pressing the ${actionName.toLowerCase()} directly in the modal.`);
   }
 };
 
