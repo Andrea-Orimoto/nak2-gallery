@@ -263,14 +263,14 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Improved Save to Photos function
+// Improved Save to Photos - much less aggressive fallback
 window.saveToPhotos = async function(url, type) {
   const isVideo = type === 'video';
-  const actionName = isVideo ? 'Video' : 'Image';
+  const itemName = isVideo ? 'video' : 'image';
 
   try {
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch');
+    if (!response.ok) throw new Error('Failed to load');
 
     const blob = await response.blob();
     const fileName = isVideo ? 'video.mp4' : 'photo.jpg';
@@ -278,32 +278,22 @@ window.saveToPhotos = async function(url, type) {
       type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg')
     });
 
-    // Try native share first (works best for videos)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         files: [file],
-        title: `Save ${actionName}`
+        title: `Save ${isVideo ? 'Video' : 'Photo'}`
       });
+      // If share succeeds, we return here — no alert
       return;
     }
 
-    // Fallback for images or when share fails
-    if (!isVideo) {
-      // For images, create a temporary link and encourage long-press
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      alert("Image downloaded. To save to Photos:\n1. Open the Files app\n2. Go to Downloads\n3. Long-press the image and tap 'Save to Photos'");
-    } else {
-      alert(`Couldn't open share sheet.\n\nTip: Long-press the playing video and select "Save Video".`);
-    }
+    // Only show helpful message if share is not supported
+    alert(`To save to Photos:\n\n1. Long-press the ${itemName} in the modal\n2. Tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
+
   } catch (err) {
     console.error(err);
-    alert(`Failed to prepare ${actionName.toLowerCase()}.\n\nTry long-pressing the ${actionName.toLowerCase()} directly in the modal.`);
+    // Very minimal fallback — only if something really broke
+    alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly.`);
   }
 };
 
