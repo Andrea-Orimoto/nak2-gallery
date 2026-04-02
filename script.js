@@ -263,7 +263,6 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Clean Save to Photos with green toast on success
 window.saveToPhotos = async function(url, type) {
   const isVideo = type === 'video';
   const itemName = isVideo ? 'Video' : 'Photo';
@@ -285,11 +284,11 @@ window.saveToPhotos = async function(url, type) {
           title: `Save ${itemName}`
         });
         
-        // Show success toast only if share completed successfully
+        // Show toast on successful share
         showToast(`✅ ${itemName} saved to Photos!`);
 
       } catch (shareErr) {
-        // User dismissed/cancelled the share sheet → do nothing (no alert)
+        // User dismissed share sheet - silent, no toast
         if (shareErr.name === 'AbortError' || shareErr.message.toLowerCase().includes('cancel')) {
           return;
         }
@@ -298,7 +297,7 @@ window.saveToPhotos = async function(url, type) {
       return;
     }
 
-    // Fallback when share is not supported
+    // Fallback
     alert(`To save to Photos:\n\nLong-press the ${itemName.toLowerCase()} and tap "Save ${itemName}"`);
 
   } catch (err) {
@@ -307,28 +306,39 @@ window.saveToPhotos = async function(url, type) {
   }
 };
 
-// Green success toast for "Save to Photos"
+// Robust green toast
 function showToast(message) {
+  console.log('Toast triggered:', message);   // For debugging
+
   const toast = document.createElement('div');
-  toast.style.position = 'fixed';
-  toast.style.bottom = '100px';
-  toast.style.left = '50%';
-  toast.style.transform = 'translateX(-50%)';
-  toast.style.backgroundColor = '#10b981';
-  toast.style.color = 'white';
-  toast.style.padding = '14px 24px';
-  toast.style.borderRadius = '9999px';
-  toast.style.fontSize = '15px';
-  toast.style.fontWeight = '500';
-  toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.3)';
-  toast.style.zIndex = '10000';
-  toast.style.whiteSpace = 'nowrap';
+  toast.id = 'custom-toast';
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #10b981;
+    color: white;
+    padding: 14px 24px;
+    border-radius: 9999px;
+    font-size: 15px;
+    font-weight: 500;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+    white-space: nowrap;
+    opacity: 0;
+    transition: all 0.3s ease;
+  `;
   toast.textContent = message;
   document.body.appendChild(toast);
 
+  // Fade in
+  setTimeout(() => {
+    toast.style.opacity = '1';
+  }, 10);
+
   // Auto dismiss
   setTimeout(() => {
-    toast.style.transition = 'all 0.4s ease';
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(-50%) translateY(20px)';
     setTimeout(() => toast.remove(), 400);
