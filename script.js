@@ -165,7 +165,7 @@ function showModal(item) {
           controls 
           autoplay 
           playsinline 
-          class="max-h-[78vh] max-w-[92vw] rounded-2xl"
+          class="max-h-[75vh] max-w-[92vw] rounded-2xl"
           style="width: auto; height: auto;">
         </video>
       </div>`;
@@ -182,6 +182,25 @@ function showModal(item) {
 
   content.innerHTML = mediaHTML;
 
+  // Smart button logic: Download on desktop, Save to Photos on mobile
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  let buttonsHTML = '';
+
+  if (isMobile) {
+    buttonsHTML = `
+      <button onclick="saveToPhotos('${item.fullUrl}', '${item.type}')" 
+              class="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
+        📸 Save to Photos
+      </button>`;
+  } else {
+    buttonsHTML = `
+      <a href="${item.fullUrl}" download 
+         class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
+        ⬇️ Download Original ${item.type === 'video' ? 'Video' : 'Photo'}
+      </a>`;
+  }
+
   meta.innerHTML = `
     <div class="flex justify-between items-center">
       <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { 
@@ -190,10 +209,9 @@ function showModal(item) {
       <button id="closeBtn" class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-4">×</button>
     </div>
 
-    <a href="${item.fullUrl}" download 
-       class="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3.5 rounded-2xl font-medium transition-all">
-      ⬇️ Download Original ${item.type === 'video' ? 'Video' : 'Photo'}
-    </a>
+    <div class="mt-6">
+      ${buttonsHTML}
+    </div>
   `;
 
   modal.classList.remove('hidden');
@@ -210,6 +228,31 @@ function showModal(item) {
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
   }, 10);
 }
+
+// Save to Photos function (for mobile)
+window.saveToPhotos = async function(url, type) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    
+    const fileName = type === 'video' ? 'video.mp4' : 'photo.jpg';
+    const file = new File([blob], fileName, { 
+      type: blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')
+    });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: type === 'video' ? 'Save Video' : 'Save Photo'
+      });
+    } else {
+      alert(`Long-press the ${type} and choose "Save ${type === 'video' ? 'Video' : 'Image'}".`);
+    }
+  } catch (err) {
+    console.error(err);
+    alert(`Couldn't open share sheet.\n\nTip: Long-press the ${type} in the player and select "Save".`);
+  }
+};
 
 function handleEscKey(e) {
   if (e.key === "Escape") closeModal();
