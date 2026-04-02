@@ -154,9 +154,31 @@ function showModal(item) {
   const content = document.getElementById('modalContent');
   const meta = document.getElementById('modalMeta');
 
-  let mediaHTML = item.type === 'video' 
-    ? `<div class="flex items-center justify-center w-full h-full p-4"><video id="modalVideo" src="${item.fullUrl}" controls autoplay playsinline class="max-h-[85vh] max-w-[90vw] rounded-2xl"></video></div>`
-    : `<div class="flex items-center justify-center w-full h-full p-4"><img id="modalImage" src="${item.fullUrl}" class="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl" alt=""></div>`;
+  let mediaHTML = '';
+
+  if (item.type === 'video') {
+    mediaHTML = `
+      <div class="flex items-center justify-center w-full h-full p-4 bg-black">
+        <video 
+          id="modalVideo" 
+          src="${item.fullUrl}" 
+          controls 
+          autoplay 
+          playsinline 
+          class="max-h-[78vh] max-w-[92vw] rounded-2xl"
+          style="width: auto; height: auto;">
+        </video>
+      </div>`;
+  } else {
+    mediaHTML = `
+      <div class="flex items-center justify-center w-full h-full p-4 bg-black">
+        <img 
+          id="modalImage" 
+          src="${item.fullUrl}" 
+          class="max-h-[75vh] max-w-[92vw] object-contain rounded-2xl" 
+          alt="">
+      </div>`;
+  }
 
   content.innerHTML = mediaHTML;
 
@@ -177,7 +199,9 @@ function showModal(item) {
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 
-  if (item.type === 'video') currentVideo = document.getElementById('modalVideo');
+  if (item.type === 'video') {
+    currentVideo = document.getElementById('modalVideo');
+  }
 
   document.addEventListener('keydown', handleEscKey);
 
