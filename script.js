@@ -95,7 +95,6 @@ function renderGroupedGallery(items) {
       div.className = `media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
 
       if (item.type === 'video') {
-        // Use the generated thumbnail from ./thumbnails/
         const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
 
         div.innerHTML = `
@@ -170,11 +169,12 @@ function showModal(item) {
         </video>
       </div>`;
   } else {
+    // FIXED: Use thumbnail for images in the modal
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4 bg-black">
         <img 
           id="modalImage" 
-          src="${item.fullUrl}" 
+          src="${item.thumbUrl}" 
           class="max-h-[75vh] max-w-[92vw] object-contain rounded-2xl" 
           alt="">
       </div>`;
@@ -284,11 +284,9 @@ window.saveToPhotos = async function(url, type) {
           title: `Save ${itemName}`
         });
         
-        // Show toast on successful share
         showToast(`✅ ${itemName} saved to Photos!`);
 
       } catch (shareErr) {
-        // User dismissed share sheet - silent, no toast
         if (shareErr.name === 'AbortError' || shareErr.message.toLowerCase().includes('cancel')) {
           return;
         }
@@ -297,7 +295,6 @@ window.saveToPhotos = async function(url, type) {
       return;
     }
 
-    // Fallback
     alert(`To save to Photos:\n\nLong-press the ${itemName.toLowerCase()} and tap "Save ${itemName}"`);
 
   } catch (err) {
@@ -306,11 +303,9 @@ window.saveToPhotos = async function(url, type) {
   }
 };
 
-// More visible and reliable green toast
 function showToast(message) {
-  console.log('Toast triggered:', message); // debugging line
+  console.log('Toast triggered:', message);
 
-  // Remove any existing toast first
   const existing = document.getElementById('custom-toast');
   if (existing) existing.remove();
 
@@ -337,12 +332,8 @@ function showToast(message) {
   toast.textContent = message;
   document.body.appendChild(toast);
 
-  // Force reflow and fade in
-  setTimeout(() => {
-    toast.style.opacity = '1';
-  }, 10);
+  setTimeout(() => { toast.style.opacity = '1'; }, 10);
 
-  // Auto dismiss after 3 seconds
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(-50%) translateY(30px)';
