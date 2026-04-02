@@ -4,10 +4,8 @@ node_modules/
 # ffmpeg installer (contains large binary files)
 node_modules/@ffmpeg-installer/
 
-# Thumbnail cache (optional but recommended)
-# thumbnails/
-
 # Other common ignores
 .DS_Store
 .env
 *.log
+temp/
