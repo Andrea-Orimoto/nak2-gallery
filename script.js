@@ -169,12 +169,12 @@ function showModal(item) {
         </video>
       </div>`;
   } else {
-    // FIXED: Use thumbnail for images in the modal
+    // Images use fullUrl in modal (as you want - higher quality)
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4 bg-black">
         <img 
           id="modalImage" 
-          src="${item.thumbUrl}" 
+          src="${item.fullUrl}" 
           class="max-h-[75vh] max-w-[92vw] object-contain rounded-2xl" 
           alt="">
       </div>`;
