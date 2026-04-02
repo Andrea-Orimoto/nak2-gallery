@@ -302,7 +302,7 @@ window.saveToPhotos = async function(url, type) {
 
   } catch (err) {
     console.error(err);
-    alert(`Couldn't prepare the ${itemName.toLowerCase()}. Try long-pressing it directly.`);
+    alert(`Please long-press the ${itemName.toLowerCase()} directly to save it.`);
   }
 };
 
