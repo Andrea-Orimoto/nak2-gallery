@@ -263,10 +263,10 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Final clean version - no alert when user dismisses share sheet
+// Clean Save to Photos with green toast on success
 window.saveToPhotos = async function(url, type) {
   const isVideo = type === 'video';
-  const itemName = isVideo ? 'video' : 'image';
+  const itemName = isVideo ? 'Video' : 'Photo';
 
   try {
     const response = await fetch(url);
@@ -282,28 +282,57 @@ window.saveToPhotos = async function(url, type) {
       try {
         await navigator.share({
           files: [file],
-          title: `Save ${isVideo ? 'Video' : 'Photo'}`
+          title: `Save ${itemName}`
         });
-        // If we reach here, share was successful
+        
+        // Show success toast only if share completed successfully
+        showToast(`✅ ${itemName} saved to Photos!`);
+
       } catch (shareErr) {
-        // User cancelled/dismissed the share sheet - do NOTHING (silent)
-        if (shareErr.name === 'AbortError' || shareErr.message.includes('cancel')) {
-          return; 
+        // User dismissed/cancelled the share sheet → do nothing (no alert)
+        if (shareErr.name === 'AbortError' || shareErr.message.toLowerCase().includes('cancel')) {
+          return;
         }
-        // Other real share errors
         console.error(shareErr);
       }
       return;
     }
 
     // Fallback when share is not supported
-    alert(`To save to Photos:\n\nLong-press the ${itemName} and tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
+    alert(`To save to Photos:\n\nLong-press the ${itemName.toLowerCase()} and tap "Save ${itemName}"`);
 
   } catch (err) {
     console.error(err);
-    // Only show error for real failures, not user cancellation
-    alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly in the modal.`);
+    alert(`Couldn't prepare the ${itemName.toLowerCase()}. Try long-pressing it directly.`);
   }
 };
+
+// Green success toast for "Save to Photos"
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.style.position = 'fixed';
+  toast.style.bottom = '100px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.backgroundColor = '#10b981';
+  toast.style.color = 'white';
+  toast.style.padding = '14px 24px';
+  toast.style.borderRadius = '9999px';
+  toast.style.fontSize = '15px';
+  toast.style.fontWeight = '500';
+  toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.3)';
+  toast.style.zIndex = '10000';
+  toast.style.whiteSpace = 'nowrap';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Auto dismiss
+  setTimeout(() => {
+    toast.style.transition = 'all 0.4s ease';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(20px)';
+    setTimeout(() => toast.remove(), 400);
+  }, 2800);
+}
 
 window.onload = loadData;
