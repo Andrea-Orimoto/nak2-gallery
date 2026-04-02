@@ -12,15 +12,14 @@ const THUMBNAILS_DIR = './thumbnails';
 async function main() {
   console.log('Fetching iCloud shared album...');
 
-  // Create thumbnails directory
   await fs.mkdir(THUMBNAILS_DIR, { recursive: true });
 
   const data = await getImages(TOKEN);
   console.log(`Total items returned by API: ${data.photos?.length || 0}`);
 
   const newIndex = {};
-  let generatedCount = 0;
-  let skippedCount = 0;
+  let generatedThumbs = 0;
+  let skippedThumbs = 0;
 
   for (const item of data.photos || []) {
     const id = item.photoGuid || item.checksum || item.id || Math.random().toString(36).slice(2);
@@ -39,25 +38,23 @@ async function main() {
 
     if (isVideo) {
       const videoUrl = derivValues.find(d => d.url && d.url.endsWith('.mp4'))?.url || derivValues[0]?.url;
+
       if (videoUrl) {
         fullUrl = videoUrl;
-
         const thumbFilename = `${id}.jpg`;
         const thumbPath = `${THUMBNAILS_DIR}/${thumbFilename}`;
 
-        // Check if thumbnail already exists
-        const thumbnailExists = await fs.access(thumbPath).then(() => true).catch(() => false);
+        const exists = await fs.access(thumbPath).then(() => true).catch(() => false);
 
-        if (thumbnailExists) {
+        if (exists) {
           thumbUrl = `./thumbnails/${thumbFilename}`;
-          skippedCount++;
+          skippedThumbs++;
         } else {
-          // Generate new thumbnail
           try {
             await new Promise((resolve, reject) => {
               ffmpeg(videoUrl)
                 .screenshots({
-                  timestamps: ['00:00:01.0'],   // Extract frame at 1 second
+                  timestamps: ['00:00:01.0'],
                   filename: thumbFilename,
                   folder: THUMBNAILS_DIR,
                   size: '640x360'
@@ -67,7 +64,7 @@ async function main() {
             });
 
             thumbUrl = `./thumbnails/${thumbFilename}`;
-            generatedCount++;
+            generatedThumbs++;
             console.log(`✓ Generated thumbnail for video ${id}`);
           } catch (err) {
             console.log(`⚠ Failed to generate thumbnail for ${id}`);
@@ -76,7 +73,6 @@ async function main() {
         }
       }
     } else {
-      // Photo logic
       const sorted = [...derivValues].sort((a, b) => (b.width || 0) - (a.width || 0));
       const thumb = derivValues.find(d => (d.width || 0) >= 300 && (d.width || 0) <= 800) || derivValues[0];
       const full = sorted[0] || thumb;
@@ -90,24 +86,46 @@ async function main() {
       type,
       dateTaken: item.assetDate || item.creationDate || item.originalDate || item.dateCreated || item.dateAdded || new Date().toISOString(),
       caption: item.caption || '',
-      thumbUrl: thumbUrl,
-      fullUrl: fullUrl,
+      thumbUrl,
+      fullUrl: fullUrl || thumbUrl,
       width: 0,
       height: 0,
       derivatives: derivatives
     };
   }
 
-  await fs.writeFile(INDEX_PATH, JSON.stringify(newIndex, null, 2));
-  
-  const videoCount = Object.values(newIndex).filter(i => i.type === 'video').length;
-  
-  console.log(`✅ Updated index.json with ${Object.keys(newIndex).length} items`);
-  console.log(`   Videos detected: ${videoCount}`);
-  console.log(`   Thumbnails generated: ${generatedCount}`);
-  console.log(`   Thumbnails skipped (already existed): ${skippedCount}`);
+  // === SMART CHANGE DETECTION ===
+  let hasChanges = true;
+
+  try {
+    const oldContent = await fs.readFile(INDEX_PATH, 'utf8');
+    const newContent = JSON.stringify(newIndex, null, 2);
+
+    if (oldContent === newContent) {
+      console.log('✅ No changes detected in iCloud album.');
+      console.log('   index.json was not updated.');
+      hasChanges = false;
+    }
+  } catch (e) {
+    // File doesn't exist yet → first run
+    hasChanges = true;
+  }
+
+  if (hasChanges) {
+    await fs.writeFile(INDEX_PATH, JSON.stringify(newIndex, null, 2));
+    
+    const videoCount = Object.values(newIndex).filter(i => i.type === 'video').length;
+    
+    console.log(`✅ Updated index.json with ${Object.keys(newIndex).length} items`);
+    console.log(`   Videos detected: ${videoCount}`);
+    console.log(`   Thumbnails generated: ${generatedThumbs}`);
+    console.log(`   Thumbnails skipped: ${skippedThumbs}`);
+  } else {
+    console.log('No new items or changes detected. Nothing to commit.');
+  }
 }
 
 main().catch(err => {
   console.error('Error updating index:', err);
+  process.exit(1);
 });

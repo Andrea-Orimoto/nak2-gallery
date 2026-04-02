@@ -5,7 +5,6 @@ on:
     - cron: '0 4 * * *'
   workflow_dispatch:
 
-# Grant write permission to the GITHUB_TOKEN
 permissions:
   contents: write
 
@@ -34,7 +33,7 @@ jobs:
       - name: Update index and generate thumbnails
         run: npm run update
 
-      - name: Commit changes (index + thumbnails)
+      - name: Commit changes only if there are updates
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update iCloud album index and thumbnails"
