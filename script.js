@@ -263,7 +263,7 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Clean Save to Photos - no alert when user dismisses the share sheet
+// Final clean version - no alert when user dismisses share sheet
 window.saveToPhotos = async function(url, type) {
   const isVideo = type === 'video';
   const itemName = isVideo ? 'video' : 'image';
@@ -279,23 +279,30 @@ window.saveToPhotos = async function(url, type) {
     });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      // This will show the share sheet. If user cancels/dismisses it, we do NOTHING.
-      await navigator.share({
-        files: [file],
-        title: `Save ${isVideo ? 'Video' : 'Photo'}`
-      });
-      return;   // Success or user cancelled → silent
+      try {
+        await navigator.share({
+          files: [file],
+          title: `Save ${isVideo ? 'Video' : 'Photo'}`
+        });
+        // If we reach here, share was successful
+      } catch (shareErr) {
+        // User cancelled/dismissed the share sheet - do NOTHING (silent)
+        if (shareErr.name === 'AbortError' || shareErr.message.includes('cancel')) {
+          return; 
+        }
+        // Other real share errors
+        console.error(shareErr);
+      }
+      return;
     }
 
-    // Only reach here if share is not supported at all
-    alert(`To save to Photos:\n\nLong-press the ${itemName} in the modal and tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
+    // Fallback when share is not supported
+    alert(`To save to Photos:\n\nLong-press the ${itemName} and tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
 
   } catch (err) {
-    // Only show error if something actually went wrong (network, etc.)
-    if (err.name !== 'AbortError') {
-      console.error(err);
-      alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly.`);
-    }
+    console.error(err);
+    // Only show error for real failures, not user cancellation
+    alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly in the modal.`);
   }
 };
 
