@@ -165,7 +165,7 @@ function showModal(item) {
           controls 
           autoplay 
           playsinline 
-          class="max-h-[75vh] max-w-[92vw] rounded-2xl"
+          class="max-h-[65vh] max-w-[92vw] rounded-2xl"
           style="width: auto; height: auto;">
         </video>
       </div>`;
