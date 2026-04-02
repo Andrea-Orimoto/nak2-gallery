@@ -5,13 +5,13 @@ on:
     - cron: '0 4 * * *'
   workflow_dispatch:
 
+# Grant write permission to the GITHUB_TOKEN
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
-
-    # Force Node.js 24 for all JavaScript actions to silence deprecation warning
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
