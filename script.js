@@ -306,43 +306,48 @@ window.saveToPhotos = async function(url, type) {
   }
 };
 
-// Robust green toast
+// More visible and reliable green toast
 function showToast(message) {
-  console.log('Toast triggered:', message);   // For debugging
+  console.log('Toast triggered:', message); // debugging line
+
+  // Remove any existing toast first
+  const existing = document.getElementById('custom-toast');
+  if (existing) existing.remove();
 
   const toast = document.createElement('div');
   toast.id = 'custom-toast';
   toast.style.cssText = `
     position: fixed;
-    bottom: 100px;
+    bottom: 120px;
     left: 50%;
     transform: translateX(-50%);
     background-color: #10b981;
     color: white;
-    padding: 14px 24px;
+    padding: 16px 28px;
     border-radius: 9999px;
-    font-size: 15px;
-    font-weight: 500;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-    z-index: 10000;
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    z-index: 99999;
     white-space: nowrap;
     opacity: 0;
-    transition: all 0.3s ease;
+    transition: all 0.4s ease;
+    pointer-events: none;
   `;
   toast.textContent = message;
   document.body.appendChild(toast);
 
-  // Fade in
+  // Force reflow and fade in
   setTimeout(() => {
     toast.style.opacity = '1';
   }, 10);
 
-  // Auto dismiss
+  // Auto dismiss after 3 seconds
   setTimeout(() => {
     toast.style.opacity = '0';
-    toast.style.transform = 'translateX(-50%) translateY(20px)';
-    setTimeout(() => toast.remove(), 400);
-  }, 2800);
+    toast.style.transform = 'translateX(-50%) translateY(30px)';
+    setTimeout(() => toast.remove(), 500);
+  }, 3000);
 }
 
 window.onload = loadData;
