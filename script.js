@@ -229,31 +229,6 @@ function showModal(item) {
   }, 10);
 }
 
-// Save to Photos function (for mobile)
-window.saveToPhotos = async function(url, type) {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    
-    const fileName = type === 'video' ? 'video.mp4' : 'photo.jpg';
-    const file = new File([blob], fileName, { 
-      type: blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')
-    });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: type === 'video' ? 'Save Video' : 'Save Photo'
-      });
-    } else {
-      alert(`Long-press the ${type} and choose "Save ${type === 'video' ? 'Video' : 'Image'}".`);
-    }
-  } catch (err) {
-    console.error(err);
-    alert(`Couldn't open share sheet.\n\nTip: Long-press the ${type} in the player and select "Save".`);
-  }
-};
-
 function handleEscKey(e) {
   if (e.key === "Escape") closeModal();
 }
@@ -288,5 +263,30 @@ function renderTagCloud() {
 function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
+
+// Save to Photos function (for mobile)
+window.saveToPhotos = async function(url, type) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    
+    const fileName = type === 'video' ? 'video.mp4' : 'photo.jpg';
+    const file = new File([blob], fileName, { 
+      type: blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')
+    });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: type === 'video' ? 'Save Video' : 'Save Photo'
+      });
+    } else {
+      alert(`Long-press the ${type} and choose "Save ${type === 'video' ? 'Video' : 'Image'}".`);
+    }
+  } catch (err) {
+    console.error(err);
+    alert(`Couldn't open share sheet.\n\nTip: Long-press the ${type} in the player and select "Save".`);
+  }
+};
 
 window.onload = loadData;
