@@ -27,7 +27,7 @@ async function main() {
   let generated = 0;
   let skipped = 0;
   let failed = 0;
-  let zeroSecondVideos = 0;
+  let shortVideos = 0;
 
   for (const item of data.photos || []) {
     const id = item.photoGuid || item.checksum || item.id || Math.random().toString(36).slice(2);
@@ -59,31 +59,30 @@ async function main() {
         } else {
           console.log(`Generating thumbnail for video ${id}...`);
 
-          // Quick check: if file size is tiny, it's likely a 0-second video
+          const tempVideoPath = `${TEMP_DIR}/${id}.mp4`;
+
           try {
-            const response = await fetch(videoUrl, { method: 'HEAD' });
-            const contentLength = parseInt(response.headers.get('content-length') || '0');
+            // Download
+            console.log(`  Downloading...`);
+            const response = await fetch(videoUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const buffer = await response.arrayBuffer();
+            await fs.writeFile(tempVideoPath, Buffer.from(buffer));
+            console.log(`  Download complete`);
 
-            if (contentLength < 50000) {  // less than ~50KB → very likely 0s video
-              console.log(`  → Detected 0-second / tiny video (${contentLength} bytes), using placeholder`);
-              thumbUrl = 'https://via.placeholder.com/640x360/1f2937/9ca3af?text=🎬';
-              zeroSecondVideos++;
-              failed++; // count as failed for stats
-            } else {
-              // Normal video - try to generate thumbnail
-              const tempVideoPath = `${TEMP_DIR}/${id}.mp4`;
+            // Smart timestamp: try 0s first for short videos, then 1s or 2s
+            const timestamps = ['00:00:00.0', '00:00:01.0', '00:00:02.0'];
 
+            let success = false;
+            for (const ts of timestamps) {
+              if (success) break;
+
+              console.log(`  Trying frame at ${ts}...`);
               try {
-                console.log(`  Downloading video...`);
-                const fullResponse = await fetch(videoUrl);
-                const buffer = await fullResponse.arrayBuffer();
-                await fs.writeFile(tempVideoPath, Buffer.from(buffer));
-
-                console.log(`  Extracting frame...`);
                 await new Promise((resolve, reject) => {
                   ffmpeg(tempVideoPath)
                     .screenshots({
-                      timestamps: ['00:00:01.0'],
+                      timestamps: [ts],
                       filename: thumbFilename,
                       folder: THUMBNAILS_DIR,
                       size: '640x360'
@@ -92,28 +91,32 @@ async function main() {
                     .on('error', (err) => reject(err));
                 });
 
-                await sleep(1200);
+                await sleep(1000);
 
                 const fileExists = await fs.access(thumbPath).then(() => true).catch(() => false);
                 if (fileExists) {
                   thumbUrl = `./thumbnails/${thumbFilename}`;
                   generated++;
-                  console.log(`✅ Thumbnail saved for ${id}`);
-                } else {
-                  throw new Error('File not created');
+                  console.log(`✅ Success at ${ts} for ${id}`);
+                  success = true;
                 }
-              } catch (err) {
-                console.error(`⚠ Failed for ${id}: ${err.message}`);
-                thumbUrl = 'https://via.placeholder.com/640x360/1f2937/9ca3af?text=🎬';
-                failed++;
-              } finally {
-                await fs.unlink(tempVideoPath).catch(() => {});
+              } catch (e) {
+                console.log(`  Failed at ${ts}`);
               }
             }
-          } catch (e) {
-            // If HEAD request fails, fall back to placeholder
+
+            if (!success) {
+              console.log(`  All timestamps failed → using placeholder`);
+              thumbUrl = 'https://via.placeholder.com/640x360/1f2937/9ca3af?text=🎬';
+              shortVideos++;
+              failed++;
+            }
+          } catch (err) {
+            console.error(`⚠ Failed for ${id}: ${err.message}`);
             thumbUrl = 'https://via.placeholder.com/640x360/1f2937/9ca3af?text=🎬';
             failed++;
+          } finally {
+            await fs.unlink(tempVideoPath).catch(() => {});
           }
         }
       }
@@ -145,8 +148,8 @@ async function main() {
   console.log(`   Videos: ${Object.values(newIndex).filter(i => i.type === 'video').length}`);
   console.log(`   Thumbnails generated: ${generated}`);
   console.log(`   Thumbnails skipped: ${skipped}`);
-  console.log(`   Zero-second / tiny videos: ${zeroSecondVideos}`);
-  console.log(`   Thumbnails failed: ${failed}`);
+  console.log(`   Short/zero-second videos (placeholder): ${shortVideos}`);
+  console.log(`   Failed: ${failed}`);
 }
 
 main().catch(err => {
