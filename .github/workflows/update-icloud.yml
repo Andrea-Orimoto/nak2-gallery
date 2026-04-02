@@ -32,8 +32,10 @@ jobs:
 
       - name: Update index and generate thumbnails
         run: npm run update
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"   # Give more memory
 
-      - name: Commit changes only if there are updates
+      - name: Commit changes only if updated
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update iCloud album index and thumbnails"
