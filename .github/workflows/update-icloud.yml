@@ -2,7 +2,7 @@ name: Update iCloud Album Index
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 permissions:
