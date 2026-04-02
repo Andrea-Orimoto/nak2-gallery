@@ -263,7 +263,7 @@ function filterByTag(tag) {
   alert(`Filtering by #${tag} (full filter system coming soon)`);
 }
 
-// Improved Save to Photos - much less aggressive fallback
+// Clean Save to Photos - no alert when user dismisses the share sheet
 window.saveToPhotos = async function(url, type) {
   const isVideo = type === 'video';
   const itemName = isVideo ? 'video' : 'image';
@@ -279,21 +279,23 @@ window.saveToPhotos = async function(url, type) {
     });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      // This will show the share sheet. If user cancels/dismisses it, we do NOTHING.
       await navigator.share({
         files: [file],
         title: `Save ${isVideo ? 'Video' : 'Photo'}`
       });
-      // If share succeeds, we return here — no alert
-      return;
+      return;   // Success or user cancelled → silent
     }
 
-    // Only show helpful message if share is not supported
-    alert(`To save to Photos:\n\n1. Long-press the ${itemName} in the modal\n2. Tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
+    // Only reach here if share is not supported at all
+    alert(`To save to Photos:\n\nLong-press the ${itemName} in the modal and tap "${isVideo ? 'Save Video' : 'Save Image'}"`);
 
   } catch (err) {
-    console.error(err);
-    // Very minimal fallback — only if something really broke
-    alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly.`);
+    // Only show error if something actually went wrong (network, etc.)
+    if (err.name !== 'AbortError') {
+      console.error(err);
+      alert(`Couldn't prepare the ${itemName}. Try long-pressing the ${itemName} directly.`);
+    }
   }
 };
 
