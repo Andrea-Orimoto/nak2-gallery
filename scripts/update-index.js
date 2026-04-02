@@ -83,9 +83,22 @@ async function main() {
 
     const thumbPath = `${THUMBNAILS_DIR}/${id}.jpg`;
 
-    // Find best thumbnail source
+    // === Find best thumbnail for grid ===
     let thumbSource = derivValues.find(d => d.url && (d.url.endsWith('.jpg') || d.url.endsWith('.jpeg')));
     if (!thumbSource) thumbSource = derivValues.find(d => d.url && !d.url.endsWith('.mp4'));
+
+    // === Find best full-quality URL for modal + download ===
+    let fullSource;
+    if (isVideo) {
+      // For videos: prefer .mp4
+      fullSource = derivValues.find(d => d.url && d.url.endsWith('.mp4'));
+    } else {
+      // For photos: take the largest one (highest resolution)
+      fullSource = derivValues.reduce((best, curr) => 
+        (curr.width || 0) > (best.width || 0) ? curr : best, 
+        derivValues[0] || {}
+      );
+    }
 
     // Download thumbnail only
     if (thumbSource && thumbSource.url) {
@@ -99,10 +112,10 @@ async function main() {
       dateTaken: item.assetDate || item.creationDate || item.originalDate || item.dateCreated || item.dateAdded || new Date().toISOString(),
       caption: item.caption || '',
       thumbUrl: `./thumbnails/${id}.jpg`,
-      // fullUrl points to the original iCloud link (fresh on each update)
-      fullUrl: thumbSource ? thumbSource.url : (derivValues[0] ? derivValues[0].url : ''),
-      width: 0,
-      height: 0,
+      // fullUrl = highest quality original from iCloud (for modal and download)
+      fullUrl: (fullSource && fullSource.url) ? fullSource.url : (thumbSource ? thumbSource.url : ''),
+      width: fullSource?.width || 0,
+      height: fullSource?.height || 0,
       derivatives: derivatives
     };
   }

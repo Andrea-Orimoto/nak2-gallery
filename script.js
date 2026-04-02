@@ -169,14 +169,14 @@ function showModal(item) {
         </video>
       </div>`;
   } else {
-    // Images use fullUrl in modal (as you want - higher quality)
+    // Use full resolution image in modal (this is what you want)
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4 bg-black">
         <img 
           id="modalImage" 
           src="${item.fullUrl}" 
           class="max-h-[75vh] max-w-[92vw] object-contain rounded-2xl" 
-          alt="">
+          alt="${item.caption || ''}">
       </div>`;
   }
 
