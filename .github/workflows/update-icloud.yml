@@ -2,7 +2,7 @@ name: Update iCloud Album Index
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '0 7 * * *'      # Midnight PDT (recommended)
   workflow_dispatch:
 
 permissions:
@@ -13,8 +13,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository with LFS
         uses: actions/checkout@v4
+        with:
+          lfs: true                     # Enable LFS on checkout
+
+      - name: Setup Git LFS
+        run: |
+          git lfs install
+          git lfs pull                     # Pull existing LFS files
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,17 +37,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Update index and generate thumbnails
+      - name: Update index and download files
         run: npm run update
         env:
-          NODE_OPTIONS: "--max-old-space-size=4096"   # Give more memory
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Commit changes only if updated
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update iCloud album index and thumbnails"
+          commit_message: "chore: update iCloud album index and files"
           file_pattern: |
             index.json
             thumbnails/*.jpg
+            originals/*
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
