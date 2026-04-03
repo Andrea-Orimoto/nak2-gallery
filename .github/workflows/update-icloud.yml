@@ -30,12 +30,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Update index and thumbnails
+            - name: Update index and thumbnails
         run: npm run update
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      - name: Check for changes
+        id: git-check
+        run: |
+          if git diff --quiet HEAD -- index.json thumbnails/; then
+            echo "No changes detected"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Commit changes only if updated
+        if: steps.git-check.outputs.changed == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update iCloud album index and thumbnails"
