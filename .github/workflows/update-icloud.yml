@@ -2,7 +2,7 @@ name: Update iCloud Album
 
 on:
   schedule:
-    - cron: '0 */4 * * *'     # Every 4 hours (recommended for reducing expired links)
+    - cron: '0 */2 * * *'     # Every 2 hours (recommended for reducing expired links)
   workflow_dispatch:
 
 permissions:
