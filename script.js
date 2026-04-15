@@ -1,6 +1,8 @@
 let allMedia = {};
 let currentFilter = 'all';
 let currentVideo = null;
+let visibleItems = [];
+let currentIndex = -1;
 
 async function loadData() {
   try {
@@ -12,7 +14,6 @@ async function loadData() {
     allMedia = await mediaRes.json();
     const tagsData = await tagsRes.json().catch(() => ({}));
 
-    // Merge tags
     Object.keys(allMedia).forEach(id => {
       allMedia[id].tags = tagsData[id] || [];
     });
@@ -21,6 +22,7 @@ async function loadData() {
     renderGroupedGallery(Object.values(allMedia));
     renderTagCloud();
     setupFilterButtons();
+    setupModalNavigation();
   } catch (err) {
     console.error('Failed to load data', err);
   }
@@ -58,17 +60,19 @@ function renderGroupedGallery(items) {
 
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
+  visibleItems = filteredItems;
+
   const groups = {};
-  filteredItems.forEach(item => {
+  filteredItems.forEach((item, index) => {
     const dateKey = new Date(item.dateTaken).toISOString().split('T')[0];
     if (!groups[dateKey]) groups[dateKey] = [];
-    groups[dateKey].push(item);
+    groups[dateKey].push({ item, index });
   });
 
   const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
   sortedDates.forEach(dateKey => {
-    const groupItems = groups[dateKey];
+    const groupEntries = groups[dateKey];
     const displayDate = new Date(dateKey).toLocaleDateString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
@@ -77,11 +81,11 @@ function renderGroupedGallery(items) {
     section.className = 'mb-12';
 
     const header = document.createElement('div');
-    header.className = `group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800`;
+    header.className = 'group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800';
     header.innerHTML = `
       <div>
         <h2 class="text-2xl font-semibold text-white">${displayDate}</h2>
-        <p class="text-zinc-500 text-sm mt-0.5">${groupItems.length} items</p>
+        <p class="text-zinc-500 text-sm mt-0.5">${groupEntries.length} items</p>
       </div>
       <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
     `;
@@ -90,9 +94,9 @@ function renderGroupedGallery(items) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5';
 
-    groupItems.forEach(item => {
+    groupEntries.forEach(({ item, index }) => {
       const div = document.createElement('div');
-      div.className = `media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
+      div.className = 'media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative';
 
       if (item.type === 'video') {
         const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
@@ -122,7 +126,7 @@ function renderGroupedGallery(items) {
           </div>`;
       }
 
-      div.addEventListener('click', () => showModal(item));
+      div.addEventListener('click', () => showModalByIndex(index));
       contentDiv.appendChild(div);
     });
 
@@ -148,10 +152,23 @@ function toggleGroup(header) {
   }
 }
 
+function showModalByIndex(index) {
+  if (index < 0 || index >= visibleItems.length) return;
+  currentIndex = index;
+  showModal(visibleItems[index]);
+  updateModalNavButtons();
+}
+
 function showModal(item) {
   const modal = document.getElementById('modal');
   const content = document.getElementById('modalContent');
   const meta = document.getElementById('modalMeta');
+
+  if (currentVideo) {
+    currentVideo.pause();
+    currentVideo.currentTime = 0;
+    currentVideo = null;
+  }
 
   let mediaHTML = '';
 
@@ -169,7 +186,6 @@ function showModal(item) {
         </video>
       </div>`;
   } else {
-    // Use full resolution image in modal (this is what you want)
     mediaHTML = `
       <div class="flex items-center justify-center w-full h-full p-4 bg-black">
         <img 
@@ -201,10 +217,22 @@ function showModal(item) {
   }
 
   meta.innerHTML = `
-    <div class="flex justify-between items-center">
-      <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', { 
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-      })}</p>
+    <div class="flex justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <button id="metaPrevBtn"
+                class="text-2xl leading-none text-zinc-400 hover:text-white transition-colors px-2"
+                aria-label="Previous item">
+          ‹
+        </button>
+        <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        })}</p>
+        <button id="metaNextBtn"
+                class="text-2xl leading-none text-zinc-400 hover:text-white transition-colors px-2"
+                aria-label="Next item">
+          ›
+        </button>
+      </div>
       <button id="closeBtn" class="text-5xl leading-none text-zinc-400 hover:text-white transition-colors px-4">×</button>
     </div>
 
@@ -220,16 +248,83 @@ function showModal(item) {
     currentVideo = document.getElementById('modalVideo');
   }
 
-  document.addEventListener('keydown', handleEscKey);
+  document.removeEventListener('keydown', handleModalKey);
+  document.addEventListener('keydown', handleModalKey);
 
   setTimeout(() => {
     const closeBtn = document.getElementById('closeBtn');
+    const metaPrevBtn = document.getElementById('metaPrevBtn');
+    const metaNextBtn = document.getElementById('metaNextBtn');
+
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (metaPrevBtn) metaPrevBtn.addEventListener('click', showPrevItem);
+    if (metaNextBtn) metaNextBtn.addEventListener('click', showNextItem);
+
+    updateModalNavButtons();
   }, 10);
 }
 
-function handleEscKey(e) {
-  if (e.key === "Escape") closeModal();
+function handleModalKey(e) {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'ArrowLeft') showPrevItem();
+  if (e.key === 'ArrowRight') showNextItem();
+}
+
+function showPrevItem() {
+  if (!visibleItems.length) return;
+  const prevIndex = (currentIndex - 1 + visibleItems.length) % visibleItems.length;
+  showModalByIndex(prevIndex);
+}
+
+function showNextItem() {
+  if (!visibleItems.length) return;
+  const nextIndex = (currentIndex + 1) % visibleItems.length;
+  showModalByIndex(nextIndex);
+}
+
+function updateModalNavButtons() {
+  const modalPrev = document.getElementById('modalPrev');
+  const modalNext = document.getElementById('modalNext');
+  const metaPrevBtn = document.getElementById('metaPrevBtn');
+  const metaNextBtn = document.getElementById('metaNextBtn');
+
+  const hasItems = visibleItems.length > 0;
+
+  [modalPrev, modalNext, metaPrevBtn, metaNextBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = !hasItems;
+    btn.style.opacity = hasItems ? '1' : '0.35';
+    btn.style.pointerEvents = hasItems ? 'auto' : 'none';
+  });
+}
+
+function setupModalNavigation() {
+  const modal = document.getElementById('modal');
+  const modalPrev = document.getElementById('modalPrev');
+  const modalNext = document.getElementById('modalNext');
+
+  if (modalPrev && !modalPrev.dataset.bound) {
+    modalPrev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showPrevItem();
+    });
+    modalPrev.dataset.bound = 'true';
+  }
+
+  if (modalNext && !modalNext.dataset.bound) {
+    modalNext.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showNextItem();
+    });
+    modalNext.dataset.bound = 'true';
+  }
+
+  if (modal && !modal.dataset.bound) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+    modal.dataset.bound = 'true';
+  }
 }
 
 function closeModal() {
@@ -241,7 +336,7 @@ function closeModal() {
     currentVideo = null;
   }
 
-  document.removeEventListener('keydown', handleEscKey);
+  document.removeEventListener('keydown', handleModalKey);
   modal.classList.add('hidden');
   modal.classList.remove('flex');
 }
@@ -273,7 +368,7 @@ window.saveToPhotos = async function(url, type) {
 
     const blob = await response.blob();
     const fileName = isVideo ? 'video.mp4' : 'photo.jpg';
-    const file = new File([blob], fileName, { 
+    const file = new File([blob], fileName, {
       type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg')
     });
 
@@ -283,9 +378,8 @@ window.saveToPhotos = async function(url, type) {
           files: [file],
           title: `Save ${itemName}`
         });
-        
-        showToast(`✅ ${itemName} saved to Photos!`);
 
+        showToast(`✅ ${itemName} saved to Photos!`);
       } catch (shareErr) {
         if (shareErr.name === 'AbortError' || shareErr.message.toLowerCase().includes('cancel')) {
           return;
@@ -296,7 +390,6 @@ window.saveToPhotos = async function(url, type) {
     }
 
     alert(`To save to Photos:\n\nLong-press the ${itemName.toLowerCase()} and tap "Save ${itemName}"`);
-
   } catch (err) {
     console.error(err);
     alert(`Please long-press the ${itemName.toLowerCase()} directly to save it.`);
