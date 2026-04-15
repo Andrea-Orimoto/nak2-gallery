@@ -4,13 +4,18 @@ let currentVideo = null;
 let visibleItems = [];
 let currentIndex = -1;
 
+const TRANSITION_MS = 220;
+let isAnimatingModal = false;
+
 let touchStartX = 0;
 let touchStartY = 0;
-const SWIPE_THRESHOLD = 50;
-const SWIPE_VERTICAL_TOLERANCE = 80;
+let touchCurrentX = 0;
+let isDraggingModal = false;
+let swipeLocked = null;
 
-const TRANSITION_MS = 180;
-let isAnimatingModal = false;
+const SWIPE_THRESHOLD_PX = 70;
+const SWIPE_THRESHOLD_RATIO = 0.18;
+const SWIPE_VERTICAL_LOCK = 24;
 
 async function loadData() {
   try {
@@ -160,43 +165,99 @@ function toggleGroup(header) {
   }
 }
 
-function animateModalTransition(direction, callback) {
-  const content = document.getElementById('modalContent');
-  const meta = document.getElementById('modalMeta');
+function getModalContentEl() {
+  return document.getElementById('modalContent');
+}
 
-  if (!content || !meta || isAnimatingModal) return;
+function getModalMetaEl() {
+  return document.getElementById('modalMeta');
+}
+
+function setModalVisualOffset(x) {
+  const content = getModalContentEl();
+  const meta = getModalMetaEl();
+  if (!content || !meta) return;
+
+  const width = Math.max(content.clientWidth, 1);
+  const progress = Math.min(Math.abs(x) / width, 1);
+  const opacity = 1 - progress * 0.35;
+
+  content.style.transform = `translateX(${x}px)`;
+  content.style.opacity = String(opacity);
+  meta.style.opacity = String(Math.max(0.55, opacity));
+}
+
+function setModalTransition(enabled) {
+  const content = getModalContentEl();
+  const meta = getModalMetaEl();
+  if (!content || !meta) return;
+
+  if (enabled) {
+    content.style.transition = `transform ${TRANSITION_MS}ms ease, opacity ${TRANSITION_MS}ms ease`;
+    meta.style.transition = `opacity ${TRANSITION_MS}ms ease`;
+  } else {
+    content.style.transition = 'none';
+    meta.style.transition = 'none';
+  }
+}
+
+function resetModalVisualState() {
+  const content = getModalContentEl();
+  const meta = getModalMetaEl();
+  if (!content || !meta) return;
+
+  content.style.transform = 'translateX(0)';
+  content.style.opacity = '1';
+  meta.style.opacity = '1';
+}
+
+function animateSnapBack() {
+  if (isAnimatingModal) return;
   isAnimatingModal = true;
   updateModalNavButtons();
 
-  const offset = direction === 'left'
-    ? -40
-    : direction === 'right'
-      ? 40
-      : 0;
+  setModalTransition(true);
+  resetModalVisualState();
 
-  content.style.transition = `transform ${TRANSITION_MS}ms ease, opacity ${TRANSITION_MS}ms ease`;
-  meta.style.transition = `opacity ${TRANSITION_MS}ms ease`;
+  setTimeout(() => {
+    isAnimatingModal = false;
+    updateModalNavButtons();
+  }, TRANSITION_MS);
+}
 
-  content.style.transform = `translateX(${offset}px)`;
-  content.style.opacity = '0.35';
+function animateToIndex(index, direction) {
+  const content = getModalContentEl();
+  const meta = getModalMetaEl();
+  if (!content || !meta || isAnimatingModal) return;
+
+  isAnimatingModal = true;
+  updateModalNavButtons();
+
+  const width = Math.max(content.clientWidth, window.innerWidth || 1);
+  const exitX = direction === 'left' ? -width : width;
+  const enterX = direction === 'left' ? width : -width;
+
+  setModalTransition(true);
+  content.style.transform = `translateX(${exitX}px)`;
+  content.style.opacity = '0.25';
   meta.style.opacity = '0.35';
 
   setTimeout(() => {
-    callback();
+    currentIndex = index;
+    showModal(visibleItems[index]);
 
-    const newContent = document.getElementById('modalContent');
-    const newMeta = document.getElementById('modalMeta');
-
-    const incomingOffset = direction === 'left'
-      ? 40
-      : direction === 'right'
-        ? -40
-        : 0;
+    const newContent = getModalContentEl();
+    const newMeta = getModalMetaEl();
+    if (!newContent || !newMeta) {
+      isAnimatingModal = false;
+      updateModalNavButtons();
+      return;
+    }
 
     newContent.style.transition = 'none';
     newMeta.style.transition = 'none';
-    newContent.style.transform = `translateX(${incomingOffset}px)`;
-    newContent.style.opacity = '0.35';
+    newContent.style.transform = `translateX(${enterX}px)`;
+    newContent.style.opacity = '0.25';
     newMeta.style.opacity = '0.35';
 
     requestAnimationFrame(() => {
@@ -214,7 +275,7 @@ function animateModalTransition(direction, callback) {
   }, TRANSITION_MS);
 }
 
-function navigateToIndex(index, direction = 'none', animate = true) {
+function showModalByIndex(index, direction = 'none', animate = false) {
   if (index < 0 || index >= visibleItems.length) return;
 
   if (!animate || currentIndex < 0 || document.getElementById('modal').classList.contains('hidden')) {
@@ -224,15 +285,14 @@ function navigateToIndex(index, direction = 'none', animate = true) {
     return;
   }
 
-  animateModalTransition(direction, () => {
+  if (direction === 'none') {
     currentIndex = index;
     showModal(visibleItems[index]);
     updateModalNavButtons();
-  });
-}
+    return;
+  }
 
-function showModalByIndex(index, direction = 'none', animate = true) {
-  navigateToIndex(index, direction, animate);
+  animateToIndex(index, direction);
 }
 
 function showModal(item) {
@@ -319,6 +379,8 @@ function showModal(item) {
 
   modal.classList.remove('hidden');
   modal.classList.add('flex');
+
+  resetModalVisualState();
 
   if (item.type === 'video') {
     currentVideo = document.getElementById('modalVideo');
@@ -424,27 +486,65 @@ function updateModalNavButtons() {
 
 function handleTouchStart(e) {
   if (!e.touches || e.touches.length !== 1 || isAnimatingModal) return;
+
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
+  touchCurrentX = touchStartX;
+  isDraggingModal = false;
+  swipeLocked = null;
 }
 
-function handleTouchEnd(e) {
-  if (!e.changedTouches || e.changedTouches.length !== 1 || isAnimatingModal) return;
+function handleTouchMove(e) {
+  if (!e.touches || e.touches.length !== 1 || isAnimatingModal) return;
 
-  const touchEndX = e.changedTouches[0].clientX;
-  const touchEndY = e.changedTouches[0].clientY;
+  const x = e.touches[0].clientX;
+  const y = e.touches[0].clientY;
+  const deltaX = x - touchStartX;
+  const deltaY = y - touchStartY;
 
-  const deltaX = touchEndX - touchStartX;
-  const deltaY = touchEndY - touchStartY;
-
-  if (Math.abs(deltaX) < SWIPE_THRESHOLD) return;
-  if (Math.abs(deltaY) > SWIPE_VERTICAL_TOLERANCE) return;
-
-  if (deltaX < 0) {
-    showNextItem();
-  } else {
-    showPrevItem();
+  if (!swipeLocked) {
+    if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+    swipeLocked = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
   }
+
+  if (swipeLocked !== 'horizontal') return;
+  if (Math.abs(deltaY) > SWIPE_VERTICAL_LOCK) return;
+
+  touchCurrentX = x;
+  isDraggingModal = true;
+
+  setModalTransition(false);
+  setModalVisualOffset(deltaX);
+
+  e.preventDefault();
+}
+
+function handleTouchEnd() {
+  if (isAnimatingModal) return;
+  if (!swipeLocked || swipeLocked !== 'horizontal') {
+    isDraggingModal = false;
+    return;
+  }
+
+  const content = getModalContentEl();
+  const width = Math.max(content?.clientWidth || 0, window.innerWidth || 1);
+  const deltaX = touchCurrentX - touchStartX;
+  const threshold = Math.max(SWIPE_THRESHOLD_PX, width * SWIPE_THRESHOLD_RATIO);
+
+  if (!isDraggingModal) return;
+
+  if (Math.abs(deltaX) >= threshold) {
+    if (deltaX < 0) {
+      showNextItem();
+    } else {
+      showPrevItem();
+    }
+  } else {
+    animateSnapBack();
+  }
+
+  isDraggingModal = false;
+  swipeLocked = null;
 }
 
 function setupModalNavigation() {
@@ -478,7 +578,9 @@ function setupModalNavigation() {
 
   if (modalContent && !modalContent.dataset.swipeBound) {
     modalContent.addEventListener('touchstart', handleTouchStart, { passive: true });
+    modalContent.addEventListener('touchmove', handleTouchMove, { passive: false });
     modalContent.addEventListener('touchend', handleTouchEnd, { passive: true });
+    modalContent.addEventListener('touchcancel', handleTouchEnd, { passive: true });
     modalContent.dataset.swipeBound = 'true';
   }
 }
@@ -491,6 +593,11 @@ function closeModal() {
     currentVideo.currentTime = 0;
     currentVideo = null;
   }
+
+  isDraggingModal = false;
+  swipeLocked = null;
+  setModalTransition(false);
+  resetModalVisualState();
 
   document.removeEventListener('keydown', handleModalKey);
   modal.classList.add('hidden');
