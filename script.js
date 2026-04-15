@@ -221,7 +221,7 @@ function showModal(item) {
       <div class="flex items-center gap-3">
         <button id="metaPrevBtn"
                 class="text-2xl leading-none text-zinc-400 hover:text-white transition-colors px-2"
-                aria-label="Previous item">
+                aria-label="Previous date">
           ‹
         </button>
         <p class="text-zinc-400 text-sm">${new Date(item.dateTaken).toLocaleDateString('en-US', {
@@ -229,7 +229,7 @@ function showModal(item) {
         })}</p>
         <button id="metaNextBtn"
                 class="text-2xl leading-none text-zinc-400 hover:text-white transition-colors px-2"
-                aria-label="Next item">
+                aria-label="Next date">
           ›
         </button>
       </div>
@@ -257,8 +257,8 @@ function showModal(item) {
     const metaNextBtn = document.getElementById('metaNextBtn');
 
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    if (metaPrevBtn) metaPrevBtn.addEventListener('click', showPrevItem);
-    if (metaNextBtn) metaNextBtn.addEventListener('click', showNextItem);
+    if (metaPrevBtn) metaPrevBtn.addEventListener('click', showPrevDate);
+    if (metaNextBtn) metaNextBtn.addEventListener('click', showNextDate);
 
     updateModalNavButtons();
   }, 10);
@@ -280,6 +280,54 @@ function showNextItem() {
   if (!visibleItems.length) return;
   const nextIndex = (currentIndex + 1) % visibleItems.length;
   showModalByIndex(nextIndex);
+}
+
+function getDateKeyAtIndex(index) {
+  if (index < 0 || index >= visibleItems.length) return null;
+  return new Date(visibleItems[index].dateTaken).toISOString().split('T')[0];
+}
+
+function getDateStartIndices() {
+  const starts = [];
+
+  visibleItems.forEach((item, index) => {
+    const currentDate = new Date(item.dateTaken).toISOString().split('T')[0];
+    const prevDate = index > 0
+      ? new Date(visibleItems[index - 1].dateTaken).toISOString().split('T')[0]
+      : null;
+
+    if (index === 0 || currentDate !== prevDate) {
+      starts.push(index);
+    }
+  });
+
+  return starts;
+}
+
+function showPrevDate() {
+  if (!visibleItems.length || currentIndex < 0) return;
+
+  const dateStarts = getDateStartIndices();
+  if (!dateStarts.length) return;
+
+  const currentDate = getDateKeyAtIndex(currentIndex);
+  const currentGroupIndex = dateStarts.findIndex(startIndex => getDateKeyAtIndex(startIndex) === currentDate);
+  const prevGroupIndex = (currentGroupIndex - 1 + dateStarts.length) % dateStarts.length;
+
+  showModalByIndex(dateStarts[prevGroupIndex]);
+}
+
+function showNextDate() {
+  if (!visibleItems.length || currentIndex < 0) return;
+
+  const dateStarts = getDateStartIndices();
+  if (!dateStarts.length) return;
+
+  const currentDate = getDateKeyAtIndex(currentIndex);
+  const currentGroupIndex = dateStarts.findIndex(startIndex => getDateKeyAtIndex(startIndex) === currentDate);
+  const nextGroupIndex = (currentGroupIndex + 1) % dateStarts.length;
+
+  showModalByIndex(dateStarts[nextGroupIndex]);
 }
 
 function updateModalNavButtons() {
