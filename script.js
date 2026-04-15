@@ -4,6 +4,11 @@ let currentVideo = null;
 let visibleItems = [];
 let currentIndex = -1;
 
+let touchStartX = 0;
+let touchStartY = 0;
+const SWIPE_THRESHOLD = 50;
+const SWIPE_VERTICAL_TOLERANCE = 80;
+
 async function loadData() {
   try {
     const [mediaRes, tagsRes] = await Promise.all([
@@ -346,10 +351,36 @@ function updateModalNavButtons() {
   });
 }
 
+function handleTouchStart(e) {
+  if (!e.touches || e.touches.length !== 1) return;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}
+
+function handleTouchEnd(e) {
+  if (!e.changedTouches || e.changedTouches.length !== 1) return;
+
+  const touchEndX = e.changedTouches[0].clientX;
+  const touchEndY = e.changedTouches[0].clientY;
+
+  const deltaX = touchEndX - touchStartX;
+  const deltaY = touchEndY - touchStartY;
+
+  if (Math.abs(deltaX) < SWIPE_THRESHOLD) return;
+  if (Math.abs(deltaY) > SWIPE_VERTICAL_TOLERANCE) return;
+
+  if (deltaX < 0) {
+    showNextItem();
+  } else {
+    showPrevItem();
+  }
+}
+
 function setupModalNavigation() {
   const modal = document.getElementById('modal');
   const modalPrev = document.getElementById('modalPrev');
   const modalNext = document.getElementById('modalNext');
+  const modalContent = document.getElementById('modalContent');
 
   if (modalPrev && !modalPrev.dataset.bound) {
     modalPrev.addEventListener('click', (e) => {
@@ -372,6 +403,12 @@ function setupModalNavigation() {
       if (e.target === modal) closeModal();
     });
     modal.dataset.bound = 'true';
+  }
+
+  if (modalContent && !modalContent.dataset.swipeBound) {
+    modalContent.addEventListener('touchstart', handleTouchStart, { passive: true });
+    modalContent.addEventListener('touchend', handleTouchEnd, { passive: true });
+    modalContent.dataset.swipeBound = 'true';
   }
 }
 
