@@ -9,6 +9,9 @@ let touchStartY = 0;
 const SWIPE_THRESHOLD = 50;
 const SWIPE_VERTICAL_TOLERANCE = 80;
 
+const TRANSITION_MS = 180;
+let isAnimatingModal = false;
+
 async function loadData() {
   try {
     const [mediaRes, tagsRes] = await Promise.all([
@@ -157,11 +160,79 @@ function toggleGroup(header) {
   }
 }
 
-function showModalByIndex(index) {
-  if (index < 0 || index >= visibleItems.length) return;
-  currentIndex = index;
-  showModal(visibleItems[index]);
+function animateModalTransition(direction, callback) {
+  const content = document.getElementById('modalContent');
+  const meta = document.getElementById('modalMeta');
+
+  if (!content || !meta || isAnimatingModal) return;
+  isAnimatingModal = true;
   updateModalNavButtons();
+
+  const offset = direction === 'left'
+    ? -40
+    : direction === 'right'
+      ? 40
+      : 0;
+
+  content.style.transition = `transform ${TRANSITION_MS}ms ease, opacity ${TRANSITION_MS}ms ease`;
+  meta.style.transition = `opacity ${TRANSITION_MS}ms ease`;
+
+  content.style.transform = `translateX(${offset}px)`;
+  content.style.opacity = '0.35';
+  meta.style.opacity = '0.35';
+
+  setTimeout(() => {
+    callback();
+
+    const newContent = document.getElementById('modalContent');
+    const newMeta = document.getElementById('modalMeta');
+
+    const incomingOffset = direction === 'left'
+      ? 40
+      : direction === 'right'
+        ? -40
+        : 0;
+
+    newContent.style.transition = 'none';
+    newMeta.style.transition = 'none';
+    newContent.style.transform = `translateX(${incomingOffset}px)`;
+    newContent.style.opacity = '0.35';
+    newMeta.style.opacity = '0.35';
+
+    requestAnimationFrame(() => {
+      newContent.style.transition = `transform ${TRANSITION_MS}ms ease, opacity ${TRANSITION_MS}ms ease`;
+      newMeta.style.transition = `opacity ${TRANSITION_MS}ms ease`;
+      newContent.style.transform = 'translateX(0)';
+      newContent.style.opacity = '1';
+      newMeta.style.opacity = '1';
+
+      setTimeout(() => {
+        isAnimatingModal = false;
+        updateModalNavButtons();
+      }, TRANSITION_MS);
+    });
+  }, TRANSITION_MS);
+}
+
+function navigateToIndex(index, direction = 'none', animate = true) {
+  if (index < 0 || index >= visibleItems.length) return;
+
+  if (!animate || currentIndex < 0 || document.getElementById('modal').classList.contains('hidden')) {
+    currentIndex = index;
+    showModal(visibleItems[index]);
+    updateModalNavButtons();
+    return;
+  }
+
+  animateModalTransition(direction, () => {
+    currentIndex = index;
+    showModal(visibleItems[index]);
+    updateModalNavButtons();
+  });
+}
+
+function showModalByIndex(index, direction = 'none', animate = true) {
+  navigateToIndex(index, direction, animate);
 }
 
 function showModal(item) {
@@ -276,15 +347,15 @@ function handleModalKey(e) {
 }
 
 function showPrevItem() {
-  if (!visibleItems.length) return;
+  if (!visibleItems.length || isAnimatingModal) return;
   const prevIndex = (currentIndex - 1 + visibleItems.length) % visibleItems.length;
-  showModalByIndex(prevIndex);
+  showModalByIndex(prevIndex, 'right', true);
 }
 
 function showNextItem() {
-  if (!visibleItems.length) return;
+  if (!visibleItems.length || isAnimatingModal) return;
   const nextIndex = (currentIndex + 1) % visibleItems.length;
-  showModalByIndex(nextIndex);
+  showModalByIndex(nextIndex, 'left', true);
 }
 
 function getDateKeyAtIndex(index) {
@@ -310,7 +381,7 @@ function getDateStartIndices() {
 }
 
 function showPrevDate() {
-  if (!visibleItems.length || currentIndex < 0) return;
+  if (!visibleItems.length || currentIndex < 0 || isAnimatingModal) return;
 
   const dateStarts = getDateStartIndices();
   if (!dateStarts.length) return;
@@ -319,11 +390,11 @@ function showPrevDate() {
   const currentGroupIndex = dateStarts.findIndex(startIndex => getDateKeyAtIndex(startIndex) === currentDate);
   const prevGroupIndex = (currentGroupIndex - 1 + dateStarts.length) % dateStarts.length;
 
-  showModalByIndex(dateStarts[prevGroupIndex]);
+  showModalByIndex(dateStarts[prevGroupIndex], 'right', true);
 }
 
 function showNextDate() {
-  if (!visibleItems.length || currentIndex < 0) return;
+  if (!visibleItems.length || currentIndex < 0 || isAnimatingModal) return;
 
   const dateStarts = getDateStartIndices();
   if (!dateStarts.length) return;
@@ -332,7 +403,7 @@ function showNextDate() {
   const currentGroupIndex = dateStarts.findIndex(startIndex => getDateKeyAtIndex(startIndex) === currentDate);
   const nextGroupIndex = (currentGroupIndex + 1) % dateStarts.length;
 
-  showModalByIndex(dateStarts[nextGroupIndex]);
+  showModalByIndex(dateStarts[nextGroupIndex], 'left', true);
 }
 
 function updateModalNavButtons() {
@@ -341,7 +412,7 @@ function updateModalNavButtons() {
   const metaPrevBtn = document.getElementById('metaPrevBtn');
   const metaNextBtn = document.getElementById('metaNextBtn');
 
-  const hasItems = visibleItems.length > 0;
+  const hasItems = visibleItems.length > 0 && !isAnimatingModal;
 
   [modalPrev, modalNext, metaPrevBtn, metaNextBtn].forEach(btn => {
     if (!btn) return;
@@ -352,13 +423,13 @@ function updateModalNavButtons() {
 }
 
 function handleTouchStart(e) {
-  if (!e.touches || e.touches.length !== 1) return;
+  if (!e.touches || e.touches.length !== 1 || isAnimatingModal) return;
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
 }
 
 function handleTouchEnd(e) {
-  if (!e.changedTouches || e.changedTouches.length !== 1) return;
+  if (!e.changedTouches || e.changedTouches.length !== 1 || isAnimatingModal) return;
 
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
