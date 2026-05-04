@@ -11,5 +11,5 @@ window.NAK2_FIREBASE_CONFIG = {
 
 window.NAK2_ADMIN_EMAILS = [
   "andrea.orimoto@gmail.com",
-  "akikocristina.orimoto@gmail.com"
+  "abraham.alas@gmail.com"
 ];
