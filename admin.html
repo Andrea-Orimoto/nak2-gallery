@@ -80,6 +80,7 @@
     let tagCatalog = [];
     let db = null;
     const pendingWrites = new Set();
+    const stickyReviewIds = new Set();
     const PAGE_SIZE = 60;
     let renderedLimit = PAGE_SIZE;
 
@@ -179,7 +180,8 @@
 
       return Object.values(allMedia).filter(item => {
         const tags = item.tags || [];
-        if (review === "untagged" && tags.length) return false;
+        const id = mediaId(item);
+        if (review === "untagged" && tags.length && !stickyReviewIds.has(id)) return false;
         if (review === "tagged" && !tags.length) return false;
         if (type !== "all" && item.type !== type) return false;
         if (!query) return true;
@@ -209,6 +211,7 @@
     function renderMediaCard(item) {
       const id = mediaId(item);
       const currentTags = new Set(item.tags || []);
+      const isStickyReview = stickyReviewIds.has(id);
       const tagButtons = tagCatalog.map(tag => {
         const active = currentTags.has(tag);
         const pending = pendingWrites.has(`${id}:${tag}`);
@@ -231,6 +234,12 @@
               </div>
               <p class="font-mono text-xs text-zinc-400 break-all">${escapeHtml(id)}</p>
               <p class="text-sm text-zinc-300 mt-2 line-clamp-2">${escapeHtml(item.caption || "No caption")}</p>
+              ${isStickyReview ? `
+                <div class="mt-3 flex items-center justify-between gap-3 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-100">
+                  <span>Tagged. Add more or finish this item.</span>
+                  <button data-done-id="${escapeHtml(id)}" class="shrink-0 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700">Done</button>
+                </div>
+              ` : ""}
               <form class="quick-tag-form flex gap-2 mt-3" data-id="${escapeHtml(id)}">
                 <input list="tagSuggestions" class="quick-tag-input min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="Add tag">
                 <button class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Add</button>
@@ -243,13 +252,17 @@
         </article>`;
     }
 
-    async function saveItemTags(id, tags, pendingKey = null) {
+    async function saveItemTags(id, tags, pendingKey = null, options = {}) {
       const normalized = normalizeTags(tags);
       const previous = allMedia[id]?.tags || [];
       const item = allMedia[id];
       if (!item) return;
+      const wasUntagged = previous.length === 0;
       item.tags = normalized;
       mediaTags[id] = normalized;
+      if (options.keepInReview && document.getElementById("adminReviewFilter").value === "untagged" && wasUntagged && normalized.length) {
+        stickyReviewIds.add(id);
+      }
       if (pendingKey) pendingWrites.add(pendingKey);
       renderAdminGrid();
 
@@ -287,6 +300,12 @@
 
     document.addEventListener("click", async (event) => {
       const button = event.target.closest(".tag-toggle");
+      const doneButton = event.target.closest("[data-done-id]");
+      if (doneButton) {
+        stickyReviewIds.delete(doneButton.dataset.doneId);
+        renderAdminGrid();
+        return;
+      }
       if (!button) return;
       const id = button.dataset.id;
       const tag = button.dataset.tag;
@@ -329,7 +348,7 @@
           const input = event.target.querySelector(".quick-tag-input");
           const tag = await ensureCatalogTag(input.value);
           input.value = "";
-          if (tag) await saveItemTags(id, [...(allMedia[id].tags || []), tag], `${id}:${tag}`);
+          if (tag) await saveItemTags(id, [...(allMedia[id].tags || []), tag], `${id}:${tag}`, { keepInReview: true });
         } catch (err) {
           console.warn("Quick tag failed", err);
           alert("Tag save failed. Please check Firebase permissions and try again.");
@@ -343,6 +362,7 @@
     ["adminSearch", "adminReviewFilter", "adminTypeFilter"].forEach(id => {
       const control = document.getElementById(id);
       const handleFilterChange = () => {
+        stickyReviewIds.clear();
         resetAdminRenderLimit();
         renderAdminGrid();
       };
