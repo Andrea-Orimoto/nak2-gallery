@@ -1,9 +1,13 @@
 let allMedia = {};
 let currentFilter = 'all';
+let selectedTags = new Set();
+let firebaseDB = null;
+let externalTagCatalog = [];
 let currentVideo = null;
 let visibleItems = [];
 let currentIndex = -1;
 
+const FILTER_STORAGE_KEY = 'nak2GalleryFilters';
 const TRANSITION_MS = 220;
 let isAnimatingModal = false;
 
@@ -17,24 +21,91 @@ const SWIPE_THRESHOLD_PX = 70;
 const SWIPE_THRESHOLD_RATIO = 0.18;
 const SWIPE_VERTICAL_LOCK = 24;
 
+function normalizeTag(value) {
+  return String(value || '').trim().replace(/^#/, '').replace(/[\s.#$\/\[\]]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+}
+
+function normalizeTags(tags) {
+  return [...new Set((Array.isArray(tags) ? tags : []).map(normalizeTag).filter(Boolean))].sort();
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
+}
+
+function loadFilterState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}');
+    if (['all', 'image', 'video'].includes(saved.mediaType)) currentFilter = saved.mediaType;
+    selectedTags = new Set(normalizeTags(saved.tags || []));
+  } catch {
+    currentFilter = 'all';
+    selectedTags = new Set();
+  }
+}
+
+function saveFilterState() {
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+    mediaType: currentFilter,
+    tags: [...selectedTags]
+  }));
+}
+
+async function loadTagsData() {
+  firebaseDB = window.getFirebaseDatabase?.() || null;
+
+  if (firebaseDB) {
+    try {
+      const [mediaTagsSnapshot, catalogSnapshot] = await Promise.all([
+        firebaseDB.ref('mediaTags').once('value'),
+        firebaseDB.ref('tagCatalog').once('value')
+      ]);
+      return {
+        mediaTags: mediaTagsSnapshot.val() || {},
+        tagCatalog: Object.keys(catalogSnapshot.val() || {})
+      };
+    } catch (err) {
+      console.warn('Firebase tags unavailable, using tags.json fallback', err);
+    }
+  }
+
+  try {
+    const response = await fetch('tags.json?t=' + Date.now());
+    if (!response.ok) return { mediaTags: {}, tagCatalog: [] };
+    return { mediaTags: await response.json(), tagCatalog: [] };
+  } catch {
+    return { mediaTags: {}, tagCatalog: [] };
+  }
+}
+
 async function loadData() {
   try {
-    const [mediaRes, tagsRes] = await Promise.all([
+    loadFilterState();
+
+    const [mediaRes, tagsPayload] = await Promise.all([
       fetch('index.json?t=' + Date.now()),
-      fetch('tags.json?t=' + Date.now()).catch(() => ({ json: () => ({}) }))
+      loadTagsData()
     ]);
 
     allMedia = await mediaRes.json();
-    const tagsData = await tagsRes.json().catch(() => ({}));
+    const tagsData = tagsPayload.mediaTags || {};
+    externalTagCatalog = normalizeTags(tagsPayload.tagCatalog || []);
 
     Object.keys(allMedia).forEach(id => {
-      allMedia[id].tags = tagsData[id] || [];
+      allMedia[id].tags = normalizeTags(tagsData[id] || []);
     });
 
     console.log(`✅ Loaded ${Object.keys(allMedia).length} media items`);
-    renderGroupedGallery(Object.values(allMedia));
-    renderTagCloud();
     setupFilterButtons();
+    updateFilterButtons();
+    renderTagCloud();
+    renderGroupedGallery(Object.values(allMedia));
     setupModalNavigation();
   } catch (err) {
     console.error('Failed to load data', err);
@@ -47,11 +118,9 @@ function setupFilterButtons() {
   });
 }
 
-function setFilter(filter) {
-  currentFilter = filter;
-
+function updateFilterButtons() {
   document.querySelectorAll('.filter-btn').forEach(btn => {
-    if (btn.dataset.filter === filter) {
+    if (btn.dataset.filter === currentFilter) {
       btn.classList.add('bg-blue-600', 'text-white');
       btn.classList.remove('bg-zinc-800', 'text-zinc-300');
     } else {
@@ -59,6 +128,12 @@ function setFilter(filter) {
       btn.classList.add('bg-zinc-800', 'text-zinc-300');
     }
   });
+}
+
+function setFilter(filter) {
+  currentFilter = filter;
+  saveFilterState();
+  updateFilterButtons();
 
   renderGroupedGallery(Object.values(allMedia));
 }
@@ -71,9 +146,27 @@ function renderGroupedGallery(items) {
   if (currentFilter === 'image') filteredItems = items.filter(item => item.type === 'image');
   else if (currentFilter === 'video') filteredItems = items.filter(item => item.type === 'video');
 
+  if (selectedTags.size) {
+    filteredItems = filteredItems.filter(item => {
+      const itemTags = new Set(item.tags || []);
+      return [...selectedTags].every(tag => itemTags.has(tag));
+    });
+  }
+
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
   visibleItems = filteredItems;
+
+  if (!filteredItems.length) {
+    gallery.innerHTML = `
+      <div class="text-center py-16 text-zinc-500">
+        <p class="text-lg text-zinc-300">No media matches the current filters.</p>
+        <button id="emptyClearFilters" class="mt-4 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Clear filters</button>
+      </div>
+    `;
+    document.getElementById('emptyClearFilters')?.addEventListener('click', clearGalleryFilters);
+    return;
+  }
 
   const groups = {};
   filteredItems.forEach((item, index) => {
@@ -352,6 +445,10 @@ function showModal(item) {
       </a>`;
   }
 
+  const tagsHTML = (item.tags || []).length
+    ? `<div class="mt-4 flex flex-wrap gap-2">${item.tags.map(tag => `<span class="px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 text-xs">#${escapeHtml(tag)}</span>`).join('')}</div>`
+    : '';
+
   meta.innerHTML = `
     <div class="flex justify-between items-center gap-4">
       <div class="flex items-center gap-3">
@@ -374,6 +471,7 @@ function showModal(item) {
 
     <div class="mt-6">
       ${buttonsHTML}
+      ${tagsHTML}
     </div>
   `;
 
@@ -606,19 +704,72 @@ function closeModal() {
 
 function renderTagCloud() {
   const allTags = new Set();
+  externalTagCatalog.forEach(tag => allTags.add(tag));
   Object.values(allMedia).forEach(item => (item.tags || []).forEach(t => allTags.add(t)));
 
   const cloud = document.getElementById('tagCloud');
-  cloud.innerHTML = Array.from(allTags).map(tag => `
-    <span onclick="filterByTag('${tag}')" 
-          class="tag px-4 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-full cursor-pointer transition-all">
-      #${tag}
-    </span>
-  `).join('');
+  const tags = Array.from(allTags).sort();
+
+  if (!tags.length) {
+    cloud.innerHTML = '<p class="text-sm text-zinc-500">No tags have been added yet.</p>';
+    return;
+  }
+
+  cloud.innerHTML = `
+    ${tags.map(tag => {
+      const active = selectedTags.has(tag);
+      return `
+        <button type="button"
+                data-tag="${escapeHtml(tag)}"
+                class="tag-filter px-4 py-1.5 text-sm rounded-full cursor-pointer transition-all ${active ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
+                aria-pressed="${active}">
+          #${escapeHtml(tag)}
+        </button>
+      `;
+    }).join('')}
+    <button id="clearTagFilters"
+            type="button"
+            class="px-4 py-1.5 text-sm rounded-full bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-all ${selectedTags.size ? '' : 'hidden'}">
+      Clear tags
+    </button>
+  `;
+
+  cloud.querySelectorAll('.tag-filter').forEach(button => {
+    button.addEventListener('click', () => toggleTagFilter(button.dataset.tag));
+  });
+  document.getElementById('clearTagFilters')?.addEventListener('click', clearTagFilters);
 }
 
 function filterByTag(tag) {
-  alert(`Filtering by #${tag} (full filter system coming soon)`);
+  toggleTagFilter(tag);
+}
+
+function toggleTagFilter(tag) {
+  const normalized = normalizeTag(tag);
+  if (!normalized) return;
+
+  if (selectedTags.has(normalized)) selectedTags.delete(normalized);
+  else selectedTags.add(normalized);
+
+  saveFilterState();
+  renderTagCloud();
+  renderGroupedGallery(Object.values(allMedia));
+}
+
+function clearTagFilters() {
+  selectedTags.clear();
+  saveFilterState();
+  renderTagCloud();
+  renderGroupedGallery(Object.values(allMedia));
+}
+
+function clearGalleryFilters() {
+  currentFilter = 'all';
+  selectedTags.clear();
+  saveFilterState();
+  updateFilterButtons();
+  renderTagCloud();
+  renderGroupedGallery(Object.values(allMedia));
 }
 
 window.saveToPhotos = async function(url, type) {

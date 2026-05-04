@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nak2 Tags Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth.js"></script>
+</head>
+
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <header class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div class="flex items-center gap-4">
+        <a href="index.html" class="text-blue-400 hover:text-blue-300 font-medium">Back to gallery</a>
+        <h1 class="text-3xl font-bold">Tags Admin</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="googleSignInButton"></div>
+        <div id="userInfo" class="hidden items-center gap-3">
+          <img id="userPhoto" class="w-10 h-10 rounded-full" alt="">
+          <span id="userName" class="hidden sm:inline text-sm text-zinc-300"></span>
+        </div>
+        <button id="logoutBtn" class="hidden px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700">Logout</button>
+      </div>
+    </header>
+
+    <div id="authGate" class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
+      <p class="text-zinc-300">Sign in with an admin Google account to manage tags.</p>
+    </div>
+
+    <main id="adminApp" class="hidden">
+      <section class="grid lg:grid-cols-[280px_1fr] gap-6 mb-8">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <h2 class="text-lg font-semibold mb-4">Tag Catalog</h2>
+          <form id="addTagForm" class="flex gap-2 mb-4">
+            <input id="newTagInput" list="tagSuggestions" class="min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2" placeholder="New tag">
+            <button class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700">Add</button>
+          </form>
+          <div id="adminTagList" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div class="flex flex-wrap items-center gap-3 mb-4">
+            <input id="adminSearch" class="flex-1 min-w-[220px] bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2" placeholder="Search id, caption, or tags">
+            <select id="adminReviewFilter" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+              <option value="untagged">Untagged</option>
+              <option value="tagged">Tagged</option>
+              <option value="all">All media</option>
+            </select>
+            <select id="adminTypeFilter" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+              <option value="all">All media</option>
+              <option value="image">Photos</option>
+              <option value="video">Videos</option>
+            </select>
+          </div>
+          <div class="flex items-center justify-between text-sm text-zinc-400">
+            <span id="adminCount">0 items</span>
+            <button id="refreshBtn" class="text-blue-400 hover:text-blue-300">Refresh</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="adminGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></section>
+      <div class="flex justify-center mt-8">
+        <button id="adminLoadMore" class="hidden px-5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Load more</button>
+      </div>
+    </main>
+    <datalist id="tagSuggestions"></datalist>
+  </div>
+
+  <script type="module">
+    let allMedia = {};
+    let mediaTags = {};
+    let tagCatalog = [];
+    let db = null;
+    const pendingWrites = new Set();
+    const PAGE_SIZE = 60;
+    let renderedLimit = PAGE_SIZE;
+
+    function mediaId(item) {
+      return item.id || item.UUID || "";
+    }
+
+    function normalizeTag(value) {
+      return String(value || "").trim().replace(/^#/, "").replace(/[\s.#$\/\[\]]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+    }
+
+    function normalizeTags(tags) {
+      return [...new Set((Array.isArray(tags) ? tags : []).map(normalizeTag).filter(Boolean))].sort();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    async function loadFallbackTags() {
+      try {
+        const res = await fetch("tags.json?t=" + Date.now());
+        if (!res.ok) return {};
+        return await res.json();
+      } catch {
+        return {};
+      }
+    }
+
+    async function loadData() {
+      const mediaRes = await fetch("index.json?t=" + Date.now());
+      allMedia = await mediaRes.json();
+
+      db = window.getFirebaseDatabase?.();
+      let firebaseTags = {};
+      let firebaseCatalog = {};
+
+      if (db) {
+        try {
+          const [tagSnap, catalogSnap] = await Promise.all([
+            db.ref("mediaTags").once("value"),
+            db.ref("tagCatalog").once("value")
+          ]);
+          firebaseTags = tagSnap.val() || {};
+          firebaseCatalog = catalogSnap.val() || {};
+        } catch (err) {
+          console.warn("Firebase tags unavailable, using tags.json fallback", err);
+        }
+      }
+
+      mediaTags = Object.keys(firebaseTags).length ? firebaseTags : await loadFallbackTags();
+      Object.values(allMedia).forEach(item => {
+        item.tags = normalizeTags(mediaTags[mediaId(item)] || []);
+      });
+
+      tagCatalog = normalizeTags([
+        ...Object.keys(firebaseCatalog || {}),
+        ...Object.values(allMedia).flatMap(item => item.tags || [])
+      ]);
+
+      renderTagCatalog();
+      renderAdminGrid();
+    }
+
+    function assertAdmin() {
+      const isAdmin = window.isAdmin?.(window.currentUser);
+      document.getElementById("authGate").classList.toggle("hidden", isAdmin);
+      document.getElementById("adminApp").classList.toggle("hidden", !isAdmin);
+      if (isAdmin && !Object.keys(allMedia).length) loadData();
+    }
+
+    function renderTagCatalog() {
+      const container = document.getElementById("adminTagList");
+      container.innerHTML = tagCatalog.length
+        ? tagCatalog.map(tag => `<span class="px-3 py-1.5 rounded-full bg-zinc-800 text-sm">#${escapeHtml(tag)}</span>`).join("")
+        : '<p class="text-sm text-zinc-500">No tags yet.</p>';
+      renderTagSuggestions();
+    }
+
+    function renderTagSuggestions() {
+      const datalist = document.getElementById("tagSuggestions");
+      datalist.innerHTML = tagCatalog
+        .map(tag => `<option value="${escapeHtml(tag)}"></option>`)
+        .join("");
+    }
+
+    function filteredItems() {
+      const review = document.getElementById("adminReviewFilter").value;
+      const type = document.getElementById("adminTypeFilter").value;
+      const query = document.getElementById("adminSearch").value.trim().toLowerCase();
+
+      return Object.values(allMedia).filter(item => {
+        const tags = item.tags || [];
+        if (review === "untagged" && tags.length) return false;
+        if (review === "tagged" && !tags.length) return false;
+        if (type !== "all" && item.type !== type) return false;
+        if (!query) return true;
+        return [
+          mediaId(item),
+          item.caption,
+          item.type,
+          ...(item.tags || [])
+        ].join(" ").toLowerCase().includes(query);
+      }).sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
+    }
+
+    function resetAdminRenderLimit() {
+      renderedLimit = PAGE_SIZE;
+    }
+
+    function renderAdminGrid() {
+      const items = filteredItems();
+      const visibleItems = items.slice(0, renderedLimit);
+      document.getElementById("adminCount").textContent = `Showing ${visibleItems.length} of ${items.length} item${items.length === 1 ? "" : "s"}`;
+      const grid = document.getElementById("adminGrid");
+      grid.innerHTML = visibleItems.map(item => renderMediaCard(item)).join("");
+      const loadMore = document.getElementById("adminLoadMore");
+      loadMore.classList.toggle("hidden", renderedLimit >= items.length);
+    }
+
+    function renderMediaCard(item) {
+      const id = mediaId(item);
+      const currentTags = new Set(item.tags || []);
+      const tagButtons = tagCatalog.map(tag => {
+        const active = currentTags.has(tag);
+        const pending = pendingWrites.has(`${id}:${tag}`);
+        return `
+          <button data-id="${escapeHtml(id)}" data-tag="${escapeHtml(tag)}"
+                  ${pending ? "disabled" : ""}
+                  class="tag-toggle px-3 py-1.5 rounded-full text-sm transition-colors disabled:cursor-wait disabled:opacity-60 ${active ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}">
+            #${escapeHtml(tag)}
+          </button>`;
+      }).join("");
+
+      return `
+        <article class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden" data-card-id="${escapeHtml(id)}">
+          <div class="grid grid-cols-[132px_1fr] gap-4 p-4">
+            <img src="${escapeHtml(item.thumbUrl || "")}" alt="" class="w-32 h-32 object-cover rounded-lg bg-zinc-800">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+                <span class="uppercase">${escapeHtml(item.type)}</span>
+                <span>${escapeHtml(new Date(item.dateTaken).toLocaleDateString("en-US"))}</span>
+              </div>
+              <p class="font-mono text-xs text-zinc-400 break-all">${escapeHtml(id)}</p>
+              <p class="text-sm text-zinc-300 mt-2 line-clamp-2">${escapeHtml(item.caption || "No caption")}</p>
+              <form class="quick-tag-form flex gap-2 mt-3" data-id="${escapeHtml(id)}">
+                <input list="tagSuggestions" class="quick-tag-input min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="Add tag">
+                <button class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Add</button>
+              </form>
+            </div>
+          </div>
+          <div class="border-t border-zinc-800 p-4 flex flex-wrap gap-2">
+            ${tagButtons || '<p class="text-sm text-zinc-500">Create a tag to start tagging.</p>'}
+          </div>
+        </article>`;
+    }
+
+    async function saveItemTags(id, tags, pendingKey = null) {
+      const normalized = normalizeTags(tags);
+      const previous = allMedia[id]?.tags || [];
+      const item = allMedia[id];
+      if (!item) return;
+      item.tags = normalized;
+      mediaTags[id] = normalized;
+      if (pendingKey) pendingWrites.add(pendingKey);
+      renderAdminGrid();
+
+      try {
+        if (!db) throw new Error("Firebase is not available");
+        await db.ref(`mediaTags/${id}`).set(normalized.length ? normalized : null);
+      } catch (err) {
+        item.tags = previous;
+        mediaTags[id] = previous;
+        console.warn("Tag save failed", err);
+        alert("Tag save failed. Please check Firebase permissions and try again.");
+      } finally {
+        if (pendingKey) pendingWrites.delete(pendingKey);
+        renderAdminGrid();
+      }
+    }
+
+    async function ensureCatalogTag(tag) {
+      const normalized = normalizeTag(tag);
+      if (!normalized) return null;
+      const isNew = !tagCatalog.includes(normalized);
+      if (isNew) tagCatalog = normalizeTags([...tagCatalog, normalized]);
+      renderTagCatalog();
+      if (isNew && db) {
+        try {
+          await db.ref(`tagCatalog/${normalized}`).set(true);
+        } catch (err) {
+          tagCatalog = tagCatalog.filter(existing => existing !== normalized);
+          renderTagCatalog();
+          throw err;
+        }
+      }
+      return normalized;
+    }
+
+    document.addEventListener("click", async (event) => {
+      const button = event.target.closest(".tag-toggle");
+      if (!button) return;
+      const id = button.dataset.id;
+      const tag = button.dataset.tag;
+      const pendingKey = `${id}:${tag}`;
+      if (pendingWrites.has(pendingKey)) return;
+      const item = allMedia[id];
+      const tags = new Set(item.tags || []);
+      tags.has(tag) ? tags.delete(tag) : tags.add(tag);
+      await saveItemTags(id, [...tags], pendingKey);
+    });
+
+    document.addEventListener("submit", async (event) => {
+      if (event.target.id === "addTagForm") {
+        event.preventDefault();
+        const input = document.getElementById("newTagInput");
+        const submitButton = event.target.querySelector("button");
+        submitButton.disabled = true;
+        submitButton.classList.add("cursor-wait", "opacity-60");
+        try {
+          await ensureCatalogTag(input.value);
+          input.value = "";
+          resetAdminRenderLimit();
+          renderAdminGrid();
+        } catch (err) {
+          console.warn("Tag creation failed", err);
+          alert("Tag creation failed. Please check Firebase permissions and try again.");
+        } finally {
+          submitButton.disabled = false;
+          submitButton.classList.remove("cursor-wait", "opacity-60");
+        }
+      }
+
+      if (event.target.classList.contains("quick-tag-form")) {
+        event.preventDefault();
+        const submitButton = event.target.querySelector("button");
+        submitButton.disabled = true;
+        submitButton.classList.add("cursor-wait", "opacity-60");
+        try {
+          const id = event.target.dataset.id;
+          const input = event.target.querySelector(".quick-tag-input");
+          const tag = await ensureCatalogTag(input.value);
+          input.value = "";
+          if (tag) await saveItemTags(id, [...(allMedia[id].tags || []), tag], `${id}:${tag}`);
+        } catch (err) {
+          console.warn("Quick tag failed", err);
+          alert("Tag save failed. Please check Firebase permissions and try again.");
+        } finally {
+          submitButton.disabled = false;
+          submitButton.classList.remove("cursor-wait", "opacity-60");
+        }
+      }
+    });
+
+    ["adminSearch", "adminReviewFilter", "adminTypeFilter"].forEach(id => {
+      const control = document.getElementById(id);
+      const handleFilterChange = () => {
+        resetAdminRenderLimit();
+        renderAdminGrid();
+      };
+      control.addEventListener("input", handleFilterChange);
+      control.addEventListener("change", handleFilterChange);
+    });
+    document.getElementById("adminLoadMore").addEventListener("click", () => {
+      renderedLimit += PAGE_SIZE;
+      renderAdminGrid();
+    });
+    document.getElementById("refreshBtn").addEventListener("click", loadData);
+    window.addEventListener("nak2-auth-changed", assertAdmin);
+    document.addEventListener("DOMContentLoaded", assertAdmin);
+    setTimeout(assertAdmin, 300);
+  </script>
+</body>
+
+</html>
