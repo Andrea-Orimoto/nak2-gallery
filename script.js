@@ -43,7 +43,7 @@ function loadFilterState() {
   try {
     const saved = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}');
     if (['all', 'image', 'video'].includes(saved.mediaType)) currentFilter = saved.mediaType;
-    selectedTags = new Set(normalizeTags(saved.tags || []));
+    selectedTags = new Set(normalizeTags(saved.tags || []).slice(0, 1));
   } catch {
     currentFilter = 'all';
     selectedTags = new Set();
@@ -149,7 +149,7 @@ function renderGroupedGallery(items) {
   if (selectedTags.size) {
     filteredItems = filteredItems.filter(item => {
       const itemTags = new Set(item.tags || []);
-      return [...selectedTags].every(tag => itemTags.has(tag));
+      return itemTags.has([...selectedTags][0]);
     });
   }
 
@@ -749,7 +749,7 @@ function toggleTagFilter(tag) {
   if (!normalized) return;
 
   if (selectedTags.has(normalized)) selectedTags.delete(normalized);
-  else selectedTags.add(normalized);
+  else selectedTags = new Set([normalized]);
 
   saveFilterState();
   renderTagCloud();
