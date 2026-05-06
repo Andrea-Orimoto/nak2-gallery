@@ -6,9 +6,16 @@ let externalTagCatalog = [];
 let currentVideo = null;
 let visibleItems = [];
 let currentIndex = -1;
+let renderedItemCount = 0;
+let gallerySections = new Map();
+let visibleGroupCounts = new Map();
+let galleryLoadObserver = null;
 
 const FILTER_STORAGE_KEY = 'nak2GalleryFilters';
 const TRANSITION_MS = 220;
+const INITIAL_RENDER_COUNT = 60;
+const RENDER_BATCH_SIZE = 50;
+const MIN_GALLERY_FILL_VH = 1.6;
 let isAnimatingModal = false;
 
 let touchStartX = 0;
@@ -138,9 +145,23 @@ function setFilter(filter) {
   renderGroupedGallery(Object.values(allMedia));
 }
 
+function getDateKey(item) {
+  return new Date(item.dateTaken).toISOString().split('T')[0];
+}
+
+function getDisplayDate(dateKey) {
+  return new Date(dateKey).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
 function renderGroupedGallery(items) {
   const gallery = document.getElementById('gallery');
   gallery.innerHTML = '';
+  disconnectGalleryObserver();
+  gallerySections = new Map();
+  visibleGroupCounts = new Map();
+  renderedItemCount = 0;
 
   let filteredItems = items;
   if (currentFilter === 'image') filteredItems = items.filter(item => item.type === 'image');
@@ -156,6 +177,11 @@ function renderGroupedGallery(items) {
   filteredItems.sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
 
   visibleItems = filteredItems;
+  currentIndex = -1;
+  visibleItems.forEach(item => {
+    const dateKey = getDateKey(item);
+    visibleGroupCounts.set(dateKey, (visibleGroupCounts.get(dateKey) || 0) + 1);
+  });
 
   if (!filteredItems.length) {
     gallery.innerHTML = `
@@ -168,31 +194,11 @@ function renderGroupedGallery(items) {
     return;
   }
 
-  const groups = {};
-  filteredItems.forEach((item, index) => {
-    const dateKey = new Date(item.dateTaken).toISOString().split('T')[0];
-    if (!groups[dateKey]) groups[dateKey] = [];
-    groups[dateKey].push({ item, index });
-  });
+  renderNextGalleryBatch({ targetCount: INITIAL_RENDER_COUNT, fillViewport: true });
+  setupGalleryObserver();
+  return;
+  /*
 
-  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-
-  sortedDates.forEach(dateKey => {
-    const groupEntries = groups[dateKey];
-    const displayDate = new Date(dateKey).toLocaleDateString('en-US', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-
-    const section = document.createElement('div');
-    section.className = 'mb-12';
-
-    const header = document.createElement('div');
-    header.className = 'group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800';
-    header.innerHTML = `
-      <div>
-        <h2 class="text-2xl font-semibold text-white">${displayDate}</h2>
-        <p class="text-zinc-500 text-sm mt-0.5">${groupEntries.length} items</p>
-      </div>
       <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">›</span>
     `;
     header.addEventListener('click', () => toggleGroup(header));
@@ -243,6 +249,173 @@ function renderGroupedGallery(items) {
     contentDiv.style.display = 'grid';
     header.querySelector('.chevron').style.transform = 'rotate(90deg)';
   });
+  */
+}
+
+function disconnectGalleryObserver() {
+  if (!galleryLoadObserver) return;
+  galleryLoadObserver.disconnect();
+  galleryLoadObserver = null;
+}
+
+function setupGalleryObserver() {
+  if (!('IntersectionObserver' in window)) return;
+
+  const sentinel = document.getElementById('galleryLoadSentinel');
+  if (!sentinel) return;
+
+  galleryLoadObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      renderNextGalleryBatch();
+    }
+  }, { rootMargin: '900px 0px' });
+
+  galleryLoadObserver.observe(sentinel);
+}
+
+function ensureGallerySentinel() {
+  const gallery = document.getElementById('gallery');
+  let sentinel = document.getElementById('galleryLoadSentinel');
+
+  if (!sentinel) {
+    sentinel = document.createElement('div');
+    sentinel.id = 'galleryLoadSentinel';
+    sentinel.className = 'h-8';
+  }
+
+  gallery.appendChild(sentinel);
+}
+
+function renderNextGalleryBatch(options = {}) {
+  const gallery = document.getElementById('gallery');
+  if (!gallery || renderedItemCount >= visibleItems.length) {
+    disconnectGalleryObserver();
+    document.getElementById('galleryLoadSentinel')?.remove();
+    return;
+  }
+
+  let targetCount = Math.min(
+    visibleItems.length,
+    Math.max(options.targetCount || renderedItemCount + RENDER_BATCH_SIZE, renderedItemCount + 1)
+  );
+
+  appendGalleryItems(targetCount);
+
+  if (options.fillViewport) {
+    const minHeight = window.innerHeight * MIN_GALLERY_FILL_VH;
+    let safety = 0;
+
+    while (renderedItemCount < visibleItems.length && gallery.scrollHeight < minHeight && safety < 8) {
+      targetCount = Math.min(visibleItems.length, renderedItemCount + RENDER_BATCH_SIZE);
+      appendGalleryItems(targetCount);
+      safety += 1;
+    }
+  }
+
+  if (renderedItemCount < visibleItems.length) {
+    ensureGallerySentinel();
+  } else {
+    disconnectGalleryObserver();
+    document.getElementById('galleryLoadSentinel')?.remove();
+  }
+}
+
+function appendGalleryItems(targetCount) {
+  const end = Math.min(targetCount, visibleItems.length);
+  if (end <= renderedItemCount) return;
+
+  const gallery = document.getElementById('gallery');
+  const fragment = document.createDocumentFragment();
+
+  for (let index = renderedItemCount; index < end; index += 1) {
+    const item = visibleItems[index];
+    const dateKey = getDateKey(item);
+    const sectionData = getOrCreateDateSection(dateKey, fragment);
+
+    sectionData.entries.push({ item, index });
+    sectionData.content.appendChild(createMediaCard(item, index));
+  }
+
+  renderedItemCount = end;
+  gallery.appendChild(fragment);
+  updateRenderedGroupCounts();
+}
+
+function getOrCreateDateSection(dateKey, fragment) {
+  if (gallerySections.has(dateKey)) return gallerySections.get(dateKey);
+
+  const section = document.createElement('div');
+  section.className = 'mb-12';
+
+  const header = document.createElement('div');
+  header.className = 'group-header flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 px-6 py-5 rounded-2xl cursor-pointer transition-all border border-zinc-800';
+  header.innerHTML = `
+    <div>
+      <h2 class="text-2xl font-semibold text-white">${getDisplayDate(dateKey)}</h2>
+      <p class="text-zinc-500 text-sm mt-0.5"><span class="group-count">${visibleGroupCounts.get(dateKey) || 0}</span> items</p>
+    </div>
+    <span class="chevron text-4xl text-zinc-400 transition-transform duration-300">â€º</span>
+  `;
+  header.querySelector('.chevron').innerHTML = '&rsaquo;';
+  header.addEventListener('click', () => toggleGroup(header));
+
+  const content = document.createElement('div');
+  content.className = 'group-content grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-5';
+  content.style.display = 'grid';
+  header.querySelector('.chevron').style.transform = 'rotate(90deg)';
+
+  section.appendChild(header);
+  section.appendChild(content);
+  fragment.appendChild(section);
+
+  const sectionData = { section, header, content, entries: [] };
+  gallerySections.set(dateKey, sectionData);
+  return sectionData;
+}
+
+function updateRenderedGroupCounts() {
+  gallerySections.forEach(({ header, entries }) => {
+    const count = header.querySelector('.group-count');
+    if (count) count.textContent = String(visibleGroupCounts.get(getDateKey(entries[0].item)) || entries.length);
+  });
+}
+
+function createMediaCard(item, index) {
+  const div = document.createElement('div');
+  div.className = 'media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative';
+
+  if (item.type === 'video') {
+    const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
+
+    div.innerHTML = `
+      <img src="${escapeHtml(thumbSrc)}"
+           loading="lazy"
+           decoding="async"
+           class="w-full h-full object-cover"
+           alt="Video"
+           onerror="this.src='https://via.placeholder.com/640x360/374151/9CA3AF?text=Video'; this.onerror=null;">
+      <div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor"/>
+          <polygon points="10,9 10,15 15,12" fill="currentColor"/>
+        </svg>
+      </div>`;
+  } else {
+    div.innerHTML = `
+      <img src="${escapeHtml(item.thumbUrl)}"
+           loading="lazy"
+           decoding="async"
+           class="w-full h-full object-cover"
+           alt="${escapeHtml(item.caption || '')}">
+      <div class="absolute top-3 right-3 bg-black/75 backdrop-blur-sm text-white p-1.5 rounded-xl shadow-md">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>`;
+  }
+
+  div.addEventListener('click', () => showModalByIndex(index));
+  return div;
 }
 
 function toggleGroup(header) {
