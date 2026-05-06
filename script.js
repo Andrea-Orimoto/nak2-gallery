@@ -380,9 +380,27 @@ function updateRenderedGroupCounts() {
   });
 }
 
+function renderCardTags(item) {
+  const tags = normalizeTags(item.tags || []);
+  if (!tags.length) return '';
+
+  const visibleTags = tags.slice(0, 2);
+  const remainingCount = tags.length - visibleTags.length;
+
+  return `
+    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-3 pt-8 pointer-events-none">
+      <div class="flex flex-wrap gap-1.5">
+        ${visibleTags.map(tag => `<span class="max-w-full truncate rounded-full bg-black/65 px-2 py-0.5 text-[11px] leading-5 text-zinc-100 backdrop-blur-sm">#${escapeHtml(tag)}</span>`).join('')}
+        ${remainingCount > 0 ? `<span class="rounded-full bg-black/65 px-2 py-0.5 text-[11px] leading-5 text-zinc-300 backdrop-blur-sm">+${remainingCount}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function createMediaCard(item, index) {
   const div = document.createElement('div');
   div.className = 'media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative';
+  const tagOverlay = renderCardTags(item);
 
   if (item.type === 'video') {
     const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
@@ -399,7 +417,8 @@ function createMediaCard(item, index) {
           <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor"/>
           <polygon points="10,9 10,15 15,12" fill="currentColor"/>
         </svg>
-      </div>`;
+      </div>
+      ${tagOverlay}`;
   } else {
     div.innerHTML = `
       <img src="${escapeHtml(item.thumbUrl)}"
@@ -411,7 +430,8 @@ function createMediaCard(item, index) {
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-      </div>`;
+      </div>
+      ${tagOverlay}`;
   }
 
   div.addEventListener('click', () => showModalByIndex(index));
