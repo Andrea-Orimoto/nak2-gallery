@@ -10,6 +10,10 @@ let renderedItemCount = 0;
 let gallerySections = new Map();
 let visibleGroupCounts = new Map();
 let galleryLoadObserver = null;
+let isTagMode = false;
+let activeTagEditorId = null;
+let activeTagEditorPosition = null;
+let pendingTagWrites = new Set();
 
 const FILTER_STORAGE_KEY = 'nak2GalleryFilters';
 const TRANSITION_MS = 220;
@@ -112,6 +116,7 @@ async function loadData() {
     setupFilterButtons();
     updateFilterButtons();
     renderTagCloud();
+    setupInlineTagging();
     renderGroupedGallery(Object.values(allMedia));
     setupModalNavigation();
   } catch (err) {
@@ -153,6 +158,10 @@ function getDisplayDate(dateKey) {
   return new Date(dateKey).toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
+}
+
+function getMediaId(item) {
+  return item?.id || item?.UUID || '';
 }
 
 function renderGroupedGallery(items) {
@@ -320,6 +329,19 @@ function renderNextGalleryBatch(options = {}) {
   }
 }
 
+function refreshRenderedGallery() {
+  const targetCount = Math.max(renderedItemCount, INITIAL_RENDER_COUNT);
+  const gallery = document.getElementById('gallery');
+  if (!gallery) return;
+
+  gallery.innerHTML = '';
+  disconnectGalleryObserver();
+  gallerySections = new Map();
+  renderedItemCount = 0;
+  renderNextGalleryBatch({ targetCount, fillViewport: true });
+  setupGalleryObserver();
+}
+
 function appendGalleryItems(targetCount) {
   const end = Math.min(targetCount, visibleItems.length);
   if (end <= renderedItemCount) return;
@@ -397,10 +419,115 @@ function renderCardTags(item) {
   `;
 }
 
+function renderTagEditButton(item) {
+  if (!isTagMode || !window.isAdmin?.(window.currentUser)) return '';
+
+  const id = getMediaId(item);
+  const pending = Array.from(pendingTagWrites).some(key => key.startsWith(`${id}:`));
+
+  return `
+    <button type="button"
+            class="inline-tag-edit absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/75 text-white shadow-md backdrop-blur-sm transition-colors hover:bg-blue-600 ${pending ? 'cursor-wait opacity-60' : ''}"
+            data-id="${escapeHtml(id)}"
+            aria-label="Edit tags"
+            ${pending ? 'disabled' : ''}>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M3 11.2V5a2 2 0 0 1 2-2h6.2a2 2 0 0 1 1.4.6l7.8 7.8a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6a2 2 0 0 1-.6-1.4Z" />
+      </svg>
+    </button>
+  `;
+}
+
+function getMobileTagEditorPosition(anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 640;
+  const margin = 16;
+  const gap = 8;
+  const preferredHeight = Math.min(360, viewportHeight - margin * 2);
+  const spaceBelow = viewportHeight - rect.bottom - margin - gap;
+  const spaceAbove = rect.top - margin - gap;
+  const openBelow = spaceBelow >= Math.min(220, preferredHeight) || spaceBelow >= spaceAbove;
+  const top = openBelow
+    ? Math.min(rect.bottom + gap, viewportHeight - margin - 160)
+    : Math.max(margin, rect.top - preferredHeight - gap);
+  const maxHeight = Math.max(160, openBelow ? viewportHeight - top - margin : rect.top - margin - gap);
+
+  return {
+    top: Math.round(top),
+    maxHeight: Math.round(Math.min(preferredHeight, maxHeight))
+  };
+}
+
+function getInlineTagEditorStyle() {
+  if (window.matchMedia?.('(min-width: 768px)').matches || !activeTagEditorPosition) return '';
+
+  return `style="top: ${activeTagEditorPosition.top}px; bottom: auto; max-height: ${activeTagEditorPosition.maxHeight}px;"`;
+}
+
+function focusActiveTagInput() {
+  requestAnimationFrame(() => {
+    document.querySelector('.inline-tag-editor .inline-tag-input')?.focus();
+  });
+}
+
+function renderInlineTagEditor(item) {
+  const id = getMediaId(item);
+  if (!isTagMode || activeTagEditorId !== id) return '';
+
+  const itemTags = normalizeTags(item.tags || []);
+  const suggestions = externalTagCatalog
+    .filter(tag => !itemTags.includes(tag))
+    .slice(0, 8);
+
+  return `
+    <div class="inline-tag-editor fixed inset-x-4 z-50 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-md md:absolute md:inset-x-3 md:bottom-auto md:top-14 md:max-h-80" data-id="${escapeHtml(id)}" ${getInlineTagEditorStyle()}>
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Editing tags</p>
+          <p class="truncate text-[11px] text-zinc-500">${getDisplayDate(getDateKey(item))}</p>
+        </div>
+        <button type="button" class="inline-tag-close rounded-full px-2 text-lg leading-none text-zinc-400 hover:text-white" aria-label="Close tag editor">&times;</button>
+      </div>
+      <div class="mb-3 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto md:max-h-24">
+        ${itemTags.length ? itemTags.map(tag => `
+          <button type="button"
+                  class="inline-tag-remove rounded-full bg-blue-600 px-2 py-1 text-[11px] leading-none text-white hover:bg-red-600"
+                  data-id="${escapeHtml(id)}"
+                  data-tag="${escapeHtml(tag)}">
+            #${escapeHtml(tag)} &times;
+          </button>
+        `).join('') : '<span class="text-xs text-zinc-500">No tags yet.</span>'}
+      </div>
+      <form class="inline-tag-form flex gap-2" data-id="${escapeHtml(id)}">
+        <input class="inline-tag-input min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-blue-500"
+               list="galleryTagSuggestions"
+               placeholder="Add tag">
+        <button type="submit" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">Add</button>
+      </form>
+      ${suggestions.length ? `
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          ${suggestions.map(tag => `
+            <button type="button"
+                    class="inline-tag-add rounded-full bg-zinc-800 px-2 py-1 text-[11px] leading-none text-zinc-200 hover:bg-zinc-700"
+                    data-id="${escapeHtml(id)}"
+                    data-tag="${escapeHtml(tag)}">
+              #${escapeHtml(tag)}
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function createMediaCard(item, index) {
   const div = document.createElement('div');
-  div.className = 'media-item cursor-pointer overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative';
+  const id = getMediaId(item);
+  const isEditingTags = isTagMode && activeTagEditorId === id;
+  div.className = `media-item cursor-pointer ${isEditingTags ? 'z-30 overflow-visible' : 'overflow-hidden'} rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
   const tagOverlay = renderCardTags(item);
+  const tagEditButton = renderTagEditButton(item);
+  const tagEditor = renderInlineTagEditor(item);
 
   if (item.type === 'video') {
     const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
@@ -418,7 +545,9 @@ function createMediaCard(item, index) {
           <polygon points="10,9 10,15 15,12" fill="currentColor"/>
         </svg>
       </div>
-      ${tagOverlay}`;
+      ${tagOverlay}
+      ${tagEditButton}
+      ${tagEditor}`;
   } else {
     div.innerHTML = `
       <img src="${escapeHtml(item.thumbUrl)}"
@@ -431,10 +560,15 @@ function createMediaCard(item, index) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       </div>
-      ${tagOverlay}`;
+      ${tagOverlay}
+      ${tagEditButton}
+      ${tagEditor}`;
   }
 
-  div.addEventListener('click', () => showModalByIndex(index));
+  div.addEventListener('click', event => {
+    if (event.target.closest('.inline-tag-edit, .inline-tag-editor')) return;
+    showModalByIndex(index);
+  });
   return div;
 }
 
@@ -449,6 +583,230 @@ function toggleGroup(header) {
     content.style.display = 'none';
     chevron.style.transform = 'rotate(0deg)';
   }
+}
+
+function setupInlineTagging() {
+  ensureTagModeButton();
+  updateTagModeUI();
+
+  if (!document.getElementById('galleryTagSuggestions')) {
+    const datalist = document.createElement('datalist');
+    datalist.id = 'galleryTagSuggestions';
+    document.body.appendChild(datalist);
+  }
+  renderGalleryTagSuggestions();
+
+  if (!document.body.dataset.inlineTaggingBound) {
+    document.addEventListener('click', handleInlineTagClick);
+    document.addEventListener('submit', handleInlineTagSubmit);
+    window.addEventListener('nak2-auth-changed', () => {
+      if (!window.isAdmin?.(window.currentUser)) {
+        isTagMode = false;
+        activeTagEditorId = null;
+        activeTagEditorPosition = null;
+      }
+      updateTagModeUI();
+      refreshRenderedGallery();
+    });
+    document.body.dataset.inlineTaggingBound = 'true';
+  }
+}
+
+function ensureTagModeButton() {
+  if (document.getElementById('tagModeBtn')) return;
+
+  const adminBtn = document.getElementById('adminBtn');
+  if (!adminBtn?.parentElement) return;
+
+  const button = document.createElement('button');
+  button.id = 'tagModeBtn';
+  button.type = 'button';
+  button.className = 'hidden px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm';
+  button.addEventListener('click', () => {
+    isTagMode = !isTagMode;
+    activeTagEditorId = null;
+    activeTagEditorPosition = null;
+    updateTagModeUI();
+    refreshRenderedGallery();
+  });
+
+  adminBtn.parentElement.insertBefore(button, adminBtn);
+}
+
+function updateTagModeUI() {
+  const button = document.getElementById('tagModeBtn');
+  if (!button) return;
+
+  const canTag = window.isAdmin?.(window.currentUser);
+  button.classList.toggle('hidden', !canTag);
+  button.classList.toggle('bg-blue-600', canTag && isTagMode);
+  button.classList.toggle('text-white', canTag && isTagMode);
+  button.classList.toggle('bg-zinc-800', !isTagMode);
+  button.textContent = isTagMode ? 'Tag mode on' : 'Tag mode';
+}
+
+function renderGalleryTagSuggestions() {
+  const datalist = document.getElementById('galleryTagSuggestions');
+  if (!datalist) return;
+
+  const allTags = new Set(externalTagCatalog);
+  Object.values(allMedia).forEach(item => (item.tags || []).forEach(tag => allTags.add(tag)));
+
+  datalist.innerHTML = Array.from(allTags).sort()
+    .map(tag => `<option value="${escapeHtml(tag)}"></option>`)
+    .join('');
+}
+
+async function ensureGalleryCatalogTag(tag) {
+  const normalized = normalizeTag(tag);
+  if (!normalized) return null;
+
+  const isNew = !externalTagCatalog.includes(normalized);
+  if (isNew) {
+    externalTagCatalog = normalizeTags([...externalTagCatalog, normalized]);
+    renderGalleryTagSuggestions();
+    renderTagCloud();
+  }
+
+  if (isNew && firebaseDB) {
+    try {
+      await firebaseDB.ref(`tagCatalog/${normalized}`).set(true);
+    } catch (err) {
+      externalTagCatalog = externalTagCatalog.filter(existing => existing !== normalized);
+      renderGalleryTagSuggestions();
+      renderTagCloud();
+      throw err;
+    }
+  }
+
+  return normalized;
+}
+
+async function saveGalleryItemTags(id, tags, pendingKey) {
+  const item = allMedia[id] || Object.values(allMedia).find(candidate => getMediaId(candidate) === id);
+  if (!item || pendingTagWrites.has(pendingKey)) return;
+
+  const previous = normalizeTags(item.tags || []);
+  const normalized = normalizeTags(tags);
+  item.tags = normalized;
+  if (allMedia[id]) allMedia[id].tags = normalized;
+  pendingTagWrites.add(pendingKey);
+  refreshRenderedGallery();
+  renderTagCloud();
+
+  try {
+    if (!firebaseDB) throw new Error('Firebase is not available');
+    await firebaseDB.ref(`mediaTags/${id}`).set(normalized.length ? normalized : null);
+  } catch (err) {
+    item.tags = previous;
+    if (allMedia[id]) allMedia[id].tags = previous;
+    console.warn('Tag save failed', err);
+    alert('Tag save failed. Please check Firebase permissions and try again.');
+  } finally {
+    pendingTagWrites.delete(pendingKey);
+    refreshRenderedGallery();
+    renderTagCloud();
+  }
+}
+
+async function addGalleryTag(id, rawTag) {
+  const item = allMedia[id] || Object.values(allMedia).find(candidate => getMediaId(candidate) === id);
+  if (!item) return;
+
+  const tag = await ensureGalleryCatalogTag(rawTag);
+  if (!tag) return;
+
+  await saveGalleryItemTags(id, [...(item.tags || []), tag], `${id}:${tag}`);
+}
+
+async function removeGalleryTag(id, tag) {
+  const item = allMedia[id] || Object.values(allMedia).find(candidate => getMediaId(candidate) === id);
+  if (!item) return;
+
+  const normalized = normalizeTag(tag);
+  await saveGalleryItemTags(
+    id,
+    normalizeTags(item.tags || []).filter(existing => existing !== normalized),
+    `${id}:${normalized}`
+  );
+}
+
+function handleInlineTagClick(event) {
+  const tagModeButton = event.target.closest('#tagModeBtn');
+  if (tagModeButton) return;
+
+  const tagEditor = event.target.closest('.inline-tag-editor');
+  const editButton = event.target.closest('.inline-tag-edit');
+  const closeButton = event.target.closest('.inline-tag-close');
+  const addButton = event.target.closest('.inline-tag-add');
+  const removeButton = event.target.closest('.inline-tag-remove');
+
+  if (editButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const isClosing = activeTagEditorId === editButton.dataset.id;
+    const nextId = editButton.dataset.id;
+    const nextPosition = getMobileTagEditorPosition(editButton.closest('.media-item') || editButton);
+
+    if (isClosing) {
+      activeTagEditorId = null;
+      activeTagEditorPosition = null;
+      refreshRenderedGallery();
+      return;
+    }
+
+    activeTagEditorId = null;
+    activeTagEditorPosition = null;
+    refreshRenderedGallery();
+
+    requestAnimationFrame(() => {
+      activeTagEditorId = nextId;
+      activeTagEditorPosition = nextPosition;
+      refreshRenderedGallery();
+      focusActiveTagInput();
+    });
+    return;
+  }
+
+  if (closeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    activeTagEditorId = null;
+    activeTagEditorPosition = null;
+    refreshRenderedGallery();
+    return;
+  }
+
+  if (addButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    addGalleryTag(addButton.dataset.id, addButton.dataset.tag);
+    return;
+  }
+
+  if (removeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    removeGalleryTag(removeButton.dataset.id, removeButton.dataset.tag);
+    return;
+  }
+
+  if (tagEditor) {
+    event.stopPropagation();
+  }
+}
+
+function handleInlineTagSubmit(event) {
+  if (!event.target.classList.contains('inline-tag-form')) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const input = event.target.querySelector('.inline-tag-input');
+  const id = event.target.dataset.id;
+  const value = input?.value || '';
+  if (input) input.value = '';
+  addGalleryTag(id, value);
 }
 
 function getModalContentEl() {
