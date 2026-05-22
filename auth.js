@@ -68,9 +68,28 @@
     window.dispatchEvent(new CustomEvent("nak2-auth-changed", { detail: null }));
   };
 
+  function positionUserMenu() {
+    const menu = document.getElementById("userMenu");
+    const button = document.getElementById("userMenuButton");
+    if (!menu || !button) return;
+
+    const margin = 16;
+    const buttonRect = button.getBoundingClientRect();
+    const menuWidth = Math.min(256, window.innerWidth - margin * 2);
+    const left = Math.min(
+      Math.max(buttonRect.right - menuWidth, margin),
+      window.innerWidth - menuWidth - margin
+    );
+
+    menu.style.width = `${menuWidth}px`;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${buttonRect.bottom + 12}px`;
+  }
+
   function setUserMenuOpen(isOpen) {
     const menu = document.getElementById("userMenu");
     const button = document.getElementById("userMenuButton");
+    if (isOpen) positionUserMenu();
     if (menu) menu.classList.toggle("hidden", !isOpen);
     if (button) button.setAttribute("aria-expanded", String(isOpen));
   }
