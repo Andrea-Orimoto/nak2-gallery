@@ -586,8 +586,7 @@ function toggleGroup(header) {
 }
 
 function setupInlineTagging() {
-  ensureTagModeButton();
-  updateTagModeUI();
+  syncTagModeWithAuth();
 
   if (!document.getElementById('galleryTagSuggestions')) {
     const datalist = document.createElement('datalist');
@@ -600,49 +599,19 @@ function setupInlineTagging() {
     document.addEventListener('click', handleInlineTagClick);
     document.addEventListener('submit', handleInlineTagSubmit);
     window.addEventListener('nak2-auth-changed', () => {
-      if (!window.isAdmin?.(window.currentUser)) {
-        isTagMode = false;
+      syncTagModeWithAuth();
+      if (!isTagMode) {
         activeTagEditorId = null;
         activeTagEditorPosition = null;
       }
-      updateTagModeUI();
       refreshRenderedGallery();
     });
     document.body.dataset.inlineTaggingBound = 'true';
   }
 }
 
-function ensureTagModeButton() {
-  if (document.getElementById('tagModeBtn')) return;
-
-  const adminBtn = document.getElementById('adminBtn');
-  if (!adminBtn?.parentElement) return;
-
-  const button = document.createElement('button');
-  button.id = 'tagModeBtn';
-  button.type = 'button';
-  button.className = 'hidden px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm';
-  button.addEventListener('click', () => {
-    isTagMode = !isTagMode;
-    activeTagEditorId = null;
-    activeTagEditorPosition = null;
-    updateTagModeUI();
-    refreshRenderedGallery();
-  });
-
-  adminBtn.parentElement.insertBefore(button, adminBtn);
-}
-
-function updateTagModeUI() {
-  const button = document.getElementById('tagModeBtn');
-  if (!button) return;
-
-  const canTag = window.isAdmin?.(window.currentUser);
-  button.classList.toggle('hidden', !canTag);
-  button.classList.toggle('bg-blue-600', canTag && isTagMode);
-  button.classList.toggle('text-white', canTag && isTagMode);
-  button.classList.toggle('bg-zinc-800', !isTagMode);
-  button.textContent = isTagMode ? 'Tag mode on' : 'Tag mode';
+function syncTagModeWithAuth() {
+  isTagMode = !!window.isAdmin?.(window.currentUser);
 }
 
 function renderGalleryTagSuggestions() {
@@ -732,9 +701,6 @@ async function removeGalleryTag(id, tag) {
 }
 
 function handleInlineTagClick(event) {
-  const tagModeButton = event.target.closest('#tagModeBtn');
-  if (tagModeButton) return;
-
   const tagEditor = event.target.closest('.inline-tag-editor');
   const editButton = event.target.closest('.inline-tag-edit');
   const closeButton = event.target.closest('.inline-tag-close');

@@ -68,13 +68,20 @@
     window.dispatchEvent(new CustomEvent("nak2-auth-changed", { detail: null }));
   };
 
+  function setUserMenuOpen(isOpen) {
+    const menu = document.getElementById("userMenu");
+    const button = document.getElementById("userMenuButton");
+    if (menu) menu.classList.toggle("hidden", !isOpen);
+    if (button) button.setAttribute("aria-expanded", String(isOpen));
+  }
+
   window.updateAuthUI = function () {
     const hasUser = !!window.currentUser;
     const isAdminUser = window.isAdmin(window.currentUser);
     const signInDiv = document.getElementById("googleSignInButton");
     const userInfo = document.getElementById("userInfo");
     const userPhoto = document.getElementById("userPhoto");
-    const userName = document.getElementById("userName");
+    const userEmail = document.getElementById("userEmail");
     const logoutBtn = document.getElementById("logoutBtn");
     const adminBtn = document.getElementById("adminBtn");
 
@@ -82,7 +89,8 @@
     if (logoutBtn) logoutBtn.classList.toggle("hidden", !hasUser);
     if (adminBtn) adminBtn.classList.toggle("hidden", !isAdminUser);
     if (userPhoto && window.currentUser?.picture) userPhoto.src = window.currentUser.picture;
-    if (userName) userName.textContent = window.currentUser?.name || window.currentUser?.email || "";
+    if (userEmail) userEmail.textContent = window.currentUser?.email || "";
+    if (!hasUser) setUserMenuOpen(false);
 
     if (signInDiv) {
       signInDiv.classList.toggle("hidden", hasUser);
@@ -123,7 +131,21 @@
     loadSavedUser();
     window.getFirebaseDatabase?.();
     initFirebaseAuth();
-    document.getElementById("logoutBtn")?.addEventListener("click", window.logout);
+    document.getElementById("userMenuButton")?.addEventListener("click", event => {
+      event.stopPropagation();
+      const menu = document.getElementById("userMenu");
+      setUserMenuOpen(menu?.classList.contains("hidden"));
+    });
+    document.addEventListener("click", event => {
+      if (!(event.target instanceof Element) || !event.target.closest("#userInfo")) setUserMenuOpen(false);
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") setUserMenuOpen(false);
+    });
+    document.getElementById("logoutBtn")?.addEventListener("click", () => {
+      setUserMenuOpen(false);
+      window.logout();
+    });
     document.getElementById("adminBtn")?.addEventListener("click", () => {
       window.location.href = "admin.html";
     });
