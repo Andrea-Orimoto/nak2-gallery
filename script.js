@@ -167,6 +167,7 @@ function getMediaId(item) {
 function renderGroupedGallery(items) {
   const gallery = document.getElementById('gallery');
   gallery.innerHTML = '';
+  renderActiveTagEditor();
   disconnectGalleryObserver();
   gallerySections = new Map();
   visibleGroupCounts = new Map();
@@ -340,6 +341,7 @@ function refreshRenderedGallery() {
   renderedItemCount = 0;
   renderNextGalleryBatch({ targetCount, fillViewport: true });
   setupGalleryObserver();
+  renderActiveTagEditor();
 }
 
 function appendGalleryItems(targetCount) {
@@ -438,36 +440,113 @@ function renderTagEditButton(item) {
   `;
 }
 
-function getMobileTagEditorPosition(anchor) {
-  const rect = anchor.getBoundingClientRect();
+function getInlineTagEditorAnchor(id = activeTagEditorId) {
+  if (!id) return null;
+
+  return Array.from(document.querySelectorAll('.inline-tag-edit'))
+    .find(button => button.dataset.id === id) || null;
+}
+
+function getActiveTagEditorItem() {
+  if (!activeTagEditorId) return null;
+
+  return allMedia[activeTagEditorId]
+    || Object.values(allMedia).find(candidate => getMediaId(candidate) === activeTagEditorId)
+    || null;
+}
+
+function getInlineTagEditorPosition(anchor) {
+  const tile = anchor.closest('.media-item') || anchor;
+  const tileRect = tile.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 360;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 640;
   const margin = 16;
   const gap = 8;
+  const isWide = window.matchMedia?.('(min-width: 768px)').matches;
+  const width = isWide
+    ? Math.min(Math.max(tileRect.width, 280), viewportWidth - margin * 2, 360)
+    : viewportWidth - margin * 2;
+  const left = isWide
+    ? Math.min(Math.max(tileRect.left, margin), viewportWidth - width - margin)
+    : margin;
   const preferredHeight = Math.min(360, viewportHeight - margin * 2);
-  const spaceBelow = viewportHeight - rect.bottom - margin - gap;
-  const spaceAbove = rect.top - margin - gap;
+  const belowAnchorTop = isWide ? anchorRect.bottom + gap : tileRect.bottom + gap;
+  const spaceBelow = viewportHeight - belowAnchorTop - margin;
+  const spaceAbove = tileRect.top - margin - gap;
   const openBelow = spaceBelow >= Math.min(220, preferredHeight) || spaceBelow >= spaceAbove;
   const top = openBelow
-    ? Math.min(rect.bottom + gap, viewportHeight - margin - 160)
-    : Math.max(margin, rect.top - preferredHeight - gap);
-  const maxHeight = Math.max(160, openBelow ? viewportHeight - top - margin : rect.top - margin - gap);
+    ? Math.min(belowAnchorTop, viewportHeight - margin - 160)
+    : Math.max(margin, tileRect.top - preferredHeight - gap);
+  const maxHeight = Math.max(160, openBelow ? viewportHeight - top - margin : tileRect.top - margin - gap);
 
   return {
+    left: Math.round(left),
     top: Math.round(top),
+    width: Math.round(width),
     maxHeight: Math.round(Math.min(preferredHeight, maxHeight))
   };
 }
 
 function getInlineTagEditorStyle() {
-  if (window.matchMedia?.('(min-width: 768px)').matches || !activeTagEditorPosition) return '';
+  if (!activeTagEditorPosition) return '';
 
-  return `style="top: ${activeTagEditorPosition.top}px; bottom: auto; max-height: ${activeTagEditorPosition.maxHeight}px;"`;
+  return `style="left: ${activeTagEditorPosition.left}px; top: ${activeTagEditorPosition.top}px; width: ${activeTagEditorPosition.width}px; max-height: ${activeTagEditorPosition.maxHeight}px;"`;
 }
 
 function focusActiveTagInput() {
   requestAnimationFrame(() => {
     document.querySelector('.inline-tag-editor .inline-tag-input')?.focus();
   });
+}
+
+function ensureInlineTagEditorLayer() {
+  let layer = document.getElementById('inlineTagEditorLayer');
+
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'inlineTagEditorLayer';
+    document.body.appendChild(layer);
+  }
+
+  return layer;
+}
+
+function positionActiveTagEditor() {
+  if (!activeTagEditorId) return;
+
+  const anchor = getInlineTagEditorAnchor();
+  const editor = document.querySelector('.inline-tag-editor');
+  if (!anchor || !editor) return;
+
+  activeTagEditorPosition = getInlineTagEditorPosition(anchor);
+  Object.assign(editor.style, {
+    left: `${activeTagEditorPosition.left}px`,
+    top: `${activeTagEditorPosition.top}px`,
+    width: `${activeTagEditorPosition.width}px`,
+    maxHeight: `${activeTagEditorPosition.maxHeight}px`
+  });
+}
+
+function renderActiveTagEditor() {
+  const layer = ensureInlineTagEditorLayer();
+
+  if (!isTagMode || !activeTagEditorId) {
+    layer.innerHTML = '';
+    return;
+  }
+
+  const anchor = getInlineTagEditorAnchor();
+  const item = getActiveTagEditorItem();
+  if (!anchor || !item) {
+    activeTagEditorId = null;
+    activeTagEditorPosition = null;
+    layer.innerHTML = '';
+    return;
+  }
+
+  activeTagEditorPosition = getInlineTagEditorPosition(anchor);
+  layer.innerHTML = renderInlineTagEditor(item);
 }
 
 function renderInlineTagEditor(item) {
@@ -480,7 +559,7 @@ function renderInlineTagEditor(item) {
     .slice(0, 8);
 
   return `
-    <div class="inline-tag-editor fixed inset-x-4 z-50 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-md md:absolute md:inset-x-3 md:bottom-auto md:top-14 md:max-h-80" data-id="${escapeHtml(id)}" ${getInlineTagEditorStyle()}>
+    <div class="inline-tag-editor fixed z-50 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-md" data-id="${escapeHtml(id)}" ${getInlineTagEditorStyle()}>
       <div class="mb-2 flex items-center justify-between gap-2">
         <div class="min-w-0">
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Editing tags</p>
@@ -524,10 +603,9 @@ function createMediaCard(item, index) {
   const div = document.createElement('div');
   const id = getMediaId(item);
   const isEditingTags = isTagMode && activeTagEditorId === id;
-  div.className = `media-item cursor-pointer ${isEditingTags ? 'z-30 overflow-visible' : 'overflow-hidden'} rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
+  div.className = `media-item cursor-pointer ${isEditingTags ? 'z-30' : ''} overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 transition-all duration-300 aspect-square relative`;
   const tagOverlay = renderCardTags(item);
   const tagEditButton = renderTagEditButton(item);
-  const tagEditor = renderInlineTagEditor(item);
 
   if (item.type === 'video') {
     const thumbSrc = item.thumbUrl || 'https://via.placeholder.com/640x360/374151/9CA3AF?text=Video';
@@ -546,8 +624,7 @@ function createMediaCard(item, index) {
         </svg>
       </div>
       ${tagOverlay}
-      ${tagEditButton}
-      ${tagEditor}`;
+      ${tagEditButton}`;
   } else {
     div.innerHTML = `
       <img src="${escapeHtml(item.thumbUrl)}"
@@ -561,8 +638,7 @@ function createMediaCard(item, index) {
         </svg>
       </div>
       ${tagOverlay}
-      ${tagEditButton}
-      ${tagEditor}`;
+      ${tagEditButton}`;
   }
 
   div.addEventListener('click', event => {
@@ -587,6 +663,7 @@ function toggleGroup(header) {
 
 function setupInlineTagging() {
   syncTagModeWithAuth();
+  ensureInlineTagEditorLayer();
 
   if (!document.getElementById('galleryTagSuggestions')) {
     const datalist = document.createElement('datalist');
@@ -598,6 +675,8 @@ function setupInlineTagging() {
   if (!document.body.dataset.inlineTaggingBound) {
     document.addEventListener('click', handleInlineTagClick);
     document.addEventListener('submit', handleInlineTagSubmit);
+    window.addEventListener('resize', positionActiveTagEditor);
+    window.addEventListener('scroll', positionActiveTagEditor, { passive: true });
     window.addEventListener('nak2-auth-changed', () => {
       syncTagModeWithAuth();
       if (!isTagMode) {
@@ -605,6 +684,7 @@ function setupInlineTagging() {
         activeTagEditorPosition = null;
       }
       refreshRenderedGallery();
+      renderActiveTagEditor();
     });
     document.body.dataset.inlineTaggingBound = 'true';
   }
@@ -712,7 +792,7 @@ function handleInlineTagClick(event) {
     event.stopPropagation();
     const isClosing = activeTagEditorId === editButton.dataset.id;
     const nextId = editButton.dataset.id;
-    const nextPosition = getMobileTagEditorPosition(editButton.closest('.media-item') || editButton);
+    const nextPosition = getInlineTagEditorPosition(editButton);
 
     if (isClosing) {
       activeTagEditorId = null;
@@ -729,6 +809,7 @@ function handleInlineTagClick(event) {
       activeTagEditorId = nextId;
       activeTagEditorPosition = nextPosition;
       refreshRenderedGallery();
+      renderActiveTagEditor();
       focusActiveTagInput();
     });
     return;
